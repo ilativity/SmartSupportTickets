@@ -361,3 +361,15 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# --- SmartSupportTickets ---------------------------------------------------
+# Runtime data: the API copies dataset.json here on first start and writes tickets/uploads here.
+# Anchored on purpose: an unanchored "App_Data/" would also hide any future folder of that name.
+/backend/SupportTickets.Api/App_Data/
+# Local secrets (JWT key, admin hash, AI keys, SMTP password) never enter the repo.
+.env
+.env.*
+!.env.example
+# Playwright output
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/blob-report/

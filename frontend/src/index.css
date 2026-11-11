@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* overflow-x guard on html as well as body: on mobile Safari a guard on body alone does not stop sideways scroll. */
+html,
+body {
+  overflow-x: hidden;
+}

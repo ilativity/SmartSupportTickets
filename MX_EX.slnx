@@ -1,1 +1,8 @@
-<Solution />
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/SupportTickets.Adapters/SupportTickets.Adapters.csproj" />
+    <Project Path="backend/SupportTickets.Api/SupportTickets.Api.csproj" />
+    <Project Path="backend/SupportTickets.Core/SupportTickets.Core.csproj" />
+    <Project Path="backend/SupportTickets.Tests/SupportTickets.Tests.csproj" />
+  </Folder>
+</Solution>
