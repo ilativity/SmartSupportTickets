@@ -47,7 +47,7 @@ SmartSupportTickets/
 ├─ dataset.json                        # provided seed data (never written at runtime)
 ├─ docker-compose.yml
 ├─ README.md                           # run + design decisions + scaling + known limitations + screenshots
-├─ docs/  SPEC.md · assignment/
+├─ docs/  SPEC.md · AI-ASSISTED-DEVELOPMENT.md (how AI errors were guarded against) · assignment/
 ├─ backend/
 │  ├─ SupportTickets.Core/             # THE HEXAGON — references nothing but the BCL
 │  │  ├─ Domain/        Ticket · TicketStatus · TicketChange (what changed between before/after)
@@ -259,7 +259,7 @@ so that **the end of Stage 1 is already a complete, submittable solution**. Time
 7. frontend: tickets list, filters, desktop table + mobile cards, new ticket modal
 8. frontend: details page, admin edit on the detail page, login
 9. e2e: specs 1, 2, 3, 4, 5, 6
-10. README v1: run, design decisions, known limitations, screenshots
+10. README v1: run, design decisions, known limitations, screenshots, link to docs/AI-ASSISTED-DEVELOPMENT.md
 
 **Stage 2 — bonuses beyond the brief (~3–5 h)**
 11. adapters: OpenAI summary (provider chosen by config)
