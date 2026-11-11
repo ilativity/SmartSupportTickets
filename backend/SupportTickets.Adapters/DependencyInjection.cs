@@ -37,8 +37,13 @@ public static class DependencyInjection
                 services.AddSingleton(ai.Gemini);
                 services.AddHttpClient<ISummaryGenerator, GeminiSummaryGenerator>(http => ConfigureAiClient(http, ai.Gemini.BaseUrl));
                 break;
+            case "openai":
+                ai.OpenAI.ApiKey = RequireKey(ai.OpenAI.ApiKey, "Ai:OpenAI:ApiKey");
+                services.AddSingleton(ai.OpenAI);
+                services.AddHttpClient<ISummaryGenerator, OpenAiSummaryGenerator>(http => ConfigureAiClient(http, ai.OpenAI.BaseUrl));
+                break;
             default:
-                throw new InvalidOperationException($"Unknown Ai:Provider '{ai.Provider}'. Use None or Gemini.");
+                throw new InvalidOperationException($"Unknown Ai:Provider '{ai.Provider}'. Use None, Gemini or OpenAI.");
         }
 
         // Email (D8).

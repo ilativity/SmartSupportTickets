@@ -74,7 +74,7 @@ backend/
     Ports/In/                ITicketUseCases — what the outside world can ask for
     Ports/Out/               ITicketRepository, ISummaryGenerator, INotificationSender, IIdGenerator
     Application/             TicketUseCases, NotificationComposer (email texts), SummaryRules
-  SupportTickets.Adapters/   driven adapters: JSON file repository, Gemini, console email; DI wiring by config
+  SupportTickets.Adapters/   driven adapters: JSON file repository, Gemini, OpenAI, console email; DI wiring by config
   SupportTickets.Api/        driving adapter (HTTP endpoints, DTOs, validation, JWT) + composition root
   SupportTickets.Tests/      xUnit; fakes for every port; WebApplicationFactory integration tests
 frontend/                    React app; only src/api/ knows about HTTP
@@ -190,9 +190,13 @@ repository.**
 | `App:FrontendBaseUrl` | `http://localhost:5201` | base of the tracking link in emails; CORS origin |
 | `Storage:DataDirectory` | `App_Data` | where `tickets.json` lives |
 | `Storage:SeedFile` | `../../dataset.json` | copied once when there is no data yet |
-| `Ai:Provider` | `None` | `None` or `Gemini` |
+| `Ai:Provider` | `None` | `None`, `Gemini` or `OpenAI` |
 | `Ai:Gemini:ApiKey` | — | **secret**; required when the provider is Gemini |
 | `Ai:Gemini:Model` | `gemini-3.5-flash-lite` | any Gemini model id |
+| `Ai:Gemini:ThinkingLevel` | `minimal` | empty = not sent (for models without it) |
+| `Ai:OpenAI:ApiKey` | — | **secret**; required when the provider is OpenAI |
+| `Ai:OpenAI:Model` | `gpt-6-luna` | any model of the Responses API |
+| `Ai:OpenAI:ReasoningEffort` | `none` | empty = not sent |
 | `Email:Provider` | `Console` | `Console` (log the email) |
 | `Jwt:SigningKey` | dev default in Development/E2E only | **secret**, ≥ 32 characters |
 | `Jwt:LifetimeMinutes` | `60` | 1–1440 |
@@ -208,7 +212,11 @@ cd backend/SupportTickets.Api
 dotnet user-secrets init
 dotnet user-secrets set "Ai:Provider" "Gemini"
 dotnet user-secrets set "Ai:Gemini:ApiKey" "<your key from https://aistudio.google.com/apikey>"
+# or: Ai:Provider = OpenAI and Ai:OpenAI:ApiKey = <key from https://platform.openai.com/api-keys>
 ```
+
+Both providers are called over plain REST and get the same instruction; the default models were the cheapest fast
+ones in each provider's model list when this was written (2026-11) — change `Model` when they are retired.
 
 Create an admin password hash (the password is read from standard input, so it stays out of shell history):
 
