@@ -1,7 +1,7 @@
 # SPEC — Smart Customer Support System
 
 Source assignment: [docs/assignment/ASSIGNMENT.md](assignment/ASSIGNMENT.md)
-(upstream: https://github.com/oringilad/Dotnet_React_EX). Status: **draft, awaiting approval** (2026-11-11).
+(upstream: https://github.com/oringilad/Dotnet_React_EX). Status: **draft v2, awaiting approval** (2026-11-11).
 
 Repository: **fork** of the upstream, renamed `ilativity/SmartSupportTickets` — the history shows the
 solution is built on the provided skeleton (upstream contained only the task, dataset, images and an empty
@@ -12,28 +12,30 @@ The build follows this file. Every decision here is repeated with its reason in 
 
 ---
 
-## 1. Decisions already taken
+## 1. Decisions
 
 | # | Decision | Reason |
 |---|----------|--------|
 | D1 | Backend targets **net9.0**, ASP.NET Core **Minimal API** | Assignment asks for .NET 8/9 and prefers Minimal API. .NET 9 left support 2026-11-10 → README names .NET 10 LTS as the next step. |
-| D2 | **One API project + one test project**, folders instead of layers-as-projects | "Explain every line" — keep it small. Separation is by folder + interfaces: Endpoints → Services → Persistence / Infrastructure. |
+| D2 | **Hexagonal architecture (ports & adapters)** in three projects: `Core` (domain + ports + use cases, no framework), `Adapters` (driven: JSON file, AI, email, files), `Api` (driving: HTTP + composition root) | The dependency rule is enforced by the **compiler** (Core has no reference to ASP.NET, MailKit or `HttpClient`), not by convention. Scaling or changing storage = new adapter, Core untouched (see §11). Deliberately light: ports are plain interfaces — no MediatR, domain events or Result types. |
 | D3 | Anyone may **list, view, create**; only **Admin (JWT)** may **edit** | Resolves the README conflict ("customers view and edit" vs bonus "only logged users can edit"). |
 | D4 | Public responses **never expose a full email**: the list omits it, details mask it (`j***@example.com`) unless the caller is Admin | The list is public and lists every ticket id, so "knowing the id" is not a secret. |
-| D5 | JSON file storage behind `ITicketRepository`, **in-memory cache + `SemaphoreSlim` + atomic write** (temp file → replace) | Concurrent requests must not corrupt the file; swap to a DB = new repository class only. |
+| D5 | JSON file storage behind the `ITicketRepository` port: **in-memory cache + `SemaphoreSlim` + atomic write** (temp file → replace) | Concurrent requests must not corrupt the file. |
 | D6 | Runtime data lives in `App_Data/` (git-ignored), **seeded from the repo's `dataset.json`** on first run | Running the app never dirties the committed dataset; reset = delete `App_Data`. |
-| D7 | AI summary: `ISummaryService` with **Gemini** and **OpenAI** implementations + `None`, chosen by `Ai:Provider` | Both providers named in the assignment; shows the abstraction. No key → ticket still created, `summary = null`. |
-| D8 | Email: `IEmailService` with **Console** (default) and **Smtp** (MailKit, Gmail App Password), chosen by `Email:Provider` | Mock is required, real SMTP is a bonus. Reviewer runs it with zero setup. |
+| D7 | AI summary port with **Gemini** and **OpenAI** adapters + `None`, chosen by `Ai:Provider` | Both providers named in the assignment. No key → ticket still created, `summary = null`. |
+| D8 | Notification port with **Console** (default) and **Smtp** (MailKit, Gmail App Password) adapters, chosen by `Email:Provider` | Mock is required, real SMTP is a bonus. Reviewer runs it with zero setup. |
 | D9 | **AI/email failures never fail the request** — logged, request succeeds | A ticket is the customer's data; a third-party outage must not lose it. |
-| D10 | Status + resolution changed in one save → **one** email listing both changes | Assignment lists 3 triggers; two emails for one click is noise. No change → no email. |
-| D11 | Optional **image upload** on create (dataset has `imageUrl`, mockup has "Upload an image") | Hidden requirement in the provided data. |
-| D12 | Frontend: **Vite + React + TypeScript + Tailwind**, React Router, TanStack Query | Typed API contract, cached server state, URL-addressable ticket view `/tickets/:id`. |
-| D13 | Secrets only via `dotnet user-secrets` / env vars; Development has safe local defaults | Public repo. |
+| D10 | Status + resolution changed in one save → **one** email listing both changes; no change → no email | Assignment lists 3 triggers; two emails for one click is noise. |
+| D11 | Optional **image upload** on create | Dataset has `imageUrl`, mockup has "Upload an image". |
+| D12 | Frontend: **Vite + React + TypeScript + Tailwind**, React Router, TanStack Query. Only `src/api/` knows about `fetch`/HTTP | Typed API contract, cached server state, URL-addressable `/tickets/:id`. The `api/` module is the frontend's adapter boundary — a full hexagon in React would be overkill. |
+| D13 | Secrets only via `dotnet user-secrets` / env vars. **Only `Development` and `E2E` have built-in defaults; any other environment with a missing JWT key or admin hash refuses to start** | Public repo; a missing secret must fail closed, never run with a default key. |
 | D14 | Code comments: XML doc on public types/members + comments that explain **why** (not what) | Every line must be explainable; comments carry the reasoning. |
 | D15 | Update = **read-modify-write inside the repository lock**; the repository returns the `(before, after)` pair and emails are derived from it | Reading state outside the lock lets two concurrent admin edits race and send wrong/duplicate emails. |
-| D16 | Admin edits **both** inline in the tickets table (as in `ticket-manage.png`: status dropdown + resolution, one Save) **and** on `/tickets/:id` | The mockup shows inline management; the brief requires editing on the detail view. Both call the same `PUT`. |
-| D17 | AI summary is generated **synchronously** during create (10 s budget), not by a background queue | The brief says "while saving the ticket, call an AI API to generate and display a short summary"; synchronous is simpler to explain. Cost: Submit waits ~1–3 s, shown with a spinner. |
+| D16 | Admin edits **both** inline in the list (as in `ticket-manage.png`) **and** on `/tickets/:id`, on desktop and mobile | The mockup shows inline management; the brief requires editing on the detail view. Both call the same `PUT`. |
+| D17 | AI summary is generated **synchronously** during create (10 s budget) | The brief says "while saving the ticket, call an AI API to generate and display a short summary". Cost: Submit waits ~1–3 s, shown with a spinner. |
 | D18 | `GET /api/tickets/statuses` serves the status list | The frontend never hard-codes `"In Progress"`; one source of truth. |
+| D19 | **Docker**: Dockerfiles for API and frontend + `docker-compose.yml` (1 API replica), `/health` endpoint | Reviewer runs everything with one command without installing .NET/Node. One replica because file storage is single-instance — stated honestly in README "Scaling". |
+| D20 | Time and ids come through ports (`TimeProvider`, `IIdGenerator`) | Use-case tests are deterministic. |
 
 ---
 
@@ -41,57 +43,74 @@ The build follows this file. Every decision here is repeated with its reason in 
 
 ```
 SmartSupportTickets/
-├─ MX_EX.slnx                         # provided solution file; both .NET projects added to it
-├─ dataset.json                       # provided seed data (never written at runtime)
-├─ README.md                          # how to run + all design decisions + screenshots
+├─ MX_EX.slnx                          # provided solution file; all .NET projects added to it
+├─ dataset.json                        # provided seed data (never written at runtime)
+├─ docker-compose.yml
+├─ README.md                           # run + design decisions + scaling + known limitations + screenshots
 ├─ docs/  SPEC.md · assignment/
 ├─ backend/
-│  ├─ SupportTickets.Api/
-│  │  ├─ Program.cs                   # composition root only: DI, auth, CORS, middleware, MapXxx()
-│  │  ├─ Endpoints/   TicketEndpoints.cs · AuthEndpoints.cs · UploadsEndpoints (static files)
-│  │  ├─ Entities/    Ticket.cs · TicketStatus.cs
-│  │  ├─ Dtos/        TicketListItemDto · TicketDetailsDto · CreateTicketRequest · UpdateTicketRequest
-│  │  │               · TicketQuery · LoginRequest · LoginResponse
-│  │  ├─ Mapping/     TicketMappings.cs (entity → DTO, email masking)
-│  │  ├─ Services/    ITicketService · TicketService · TicketNotificationComposer (email texts)
-│  │  ├─ Persistence/ ITicketRepository · JsonTicketRepository · JsonFileStorageOptions
-│  │  ├─ Infrastructure/
-│  │  │  ├─ Ai/       ISummaryService · GeminiSummaryService · OpenAiSummaryService · NoSummaryService · AiOptions
-│  │  │  ├─ Email/    IEmailService · ConsoleEmailService · SmtpEmailService · EmailOptions
-│  │  │  ├─ Auth/     JwtOptions · AdminOptions · TokenService · PasswordHashTool
-│  │  │  ├─ Files/    IImageStorage · LocalImageStorage (validation by size + magic bytes)
-│  │  │  └─ Validation/ ValidationFilter<T> (DataAnnotations for minimal APIs)
-│  │  ├─ appsettings.json · appsettings.Development.json
-│  │  └─ App_Data/  (git-ignored: tickets.json, uploads/)
-│  └─ SupportTickets.Api.Tests/       # xUnit
-└─ frontend/                          # Vite React TS
+│  ├─ SupportTickets.Core/             # THE HEXAGON — references nothing but the BCL
+│  │  ├─ Domain/        Ticket · TicketStatus · TicketChange (what changed between before/after)
+│  │  ├─ Ports/In/      ITicketUseCases (List, Get, Create, Update, Statuses) + commands/results
+│  │  │                 (CreateTicketCommand, UpdateTicketCommand, TicketQuery)
+│  │  ├─ Ports/Out/     ITicketRepository · ISummaryGenerator · INotificationSender · IImageStore · IIdGenerator
+│  │  └─ Application/   TicketUseCases (implements Ports/In using Ports/Out) · NotificationComposer (email texts)
+│  ├─ SupportTickets.Adapters/         # DRIVEN adapters — implement Ports/Out; named by technology
+│  │  ├─ Persistence/   JsonTicketRepository · JsonStorageOptions
+│  │  ├─ Ai/            GeminiSummaryGenerator · OpenAiSummaryGenerator · NoSummaryGenerator · AiOptions
+│  │  ├─ Notifications/ ConsoleNotificationSender · SmtpNotificationSender · EmailOptions
+│  │  ├─ Files/         LocalImageStore (size + magic-byte check, GUID names)
+│  │  └─ DependencyInjection.cs   # AddAdapters(config): picks adapters by Ai:Provider / Email:Provider
+│  ├─ SupportTickets.Api/              # DRIVING adapter (HTTP) + composition root
+│  │  ├─ Program.cs     # wiring only: AddCore, AddAdapters, auth, CORS, rate limit, ProblemDetails, MapXxx()
+│  │  ├─ Endpoints/     TicketEndpoints · AuthEndpoints · HealthEndpoints
+│  │  ├─ Dtos/          HTTP contract: TicketListItemDto · TicketDetailsDto · CreateTicketRequest ·
+│  │  │                 UpdateTicketRequest · LoginRequest · LoginResponse  (+ mapping, email masking)
+│  │  ├─ Auth/          JwtOptions · AdminOptions · TokenService · AdminCredentialsVerifier
+│  │  ├─ Validation/    ValidationFilter<T> (DataAnnotations for minimal APIs)
+│  │  ├─ Tools/         HashPasswordCommand (`dotnet run -- hash-password <pwd>`; no side effects on load)
+│  │  ├─ Dockerfile
+│  │  └─ appsettings.json · appsettings.Development.json · appsettings.E2E.json
+│  └─ SupportTickets.Tests/            # xUnit, no mocking library
+│     ├─ Fakes/         InMemoryTicketRepository · FakeSummaryGenerator (can throw) · FakeNotificationSender (outbox)
+│     │                 · FixedIdGenerator   (FakeTimeProvider from Microsoft.Extensions.TimeProvider.Testing)
+│     ├─ Core/  · Adapters/  · Api/  · Architecture/
+└─ frontend/                           # Vite React TS
+   ├─ Dockerfile · nginx.conf
+   ├─ e2e/                             # Playwright
    └─ src/
-      ├─ api/        client.ts (fetch wrapper, auth header, ProblemDetails → Error) · tickets.ts · auth.ts · types.ts
-      ├─ auth/       AuthContext.tsx · RequireAdmin
+      ├─ api/        client.ts (fetch wrapper, auth header, ProblemDetails → ApiError, 429 ≠ "wrong password") · tickets.ts · auth.ts · types.ts
+      ├─ auth/       AuthContext.tsx
       ├─ pages/      TicketsPage · TicketDetailsPage · LoginPage · NotFoundPage
-      ├─ components/ TicketTable · TicketFilters · NewTicketModal · StatusBadge · Header · Toast · EmptyState
-      └─ hooks/      useDebouncedValue
+      ├─ components/ TicketTable · TicketCards · TicketFilters · NewTicketModal · StatusBadge · StatusSelect
+      │              · SaveBar · Header · Toast · ErrorState (Retry) · EmptyState
+      └─ hooks/      useDebouncedValue · useInflightGuard (useRef-based double-submit guard)
 ```
+
+Dependency direction: `Api → Core`, `Api → Adapters` (composition root only), `Adapters → Core`. **Core → nothing.**
+Fakes live in the test project, not in Core, so no test code ships in the production assembly.
 
 ---
 
-## 3. Domain
+## 3. Domain (Core)
 
 `Ticket` (matches `dataset.json` field names, camelCase on disk):
 
 | Field | Type | Notes |
 |---|---|---|
-| id | `Guid` | generated server-side |
+| id | `Guid` | from `IIdGenerator` |
 | name | `string` | 2–100 chars |
 | email | `string` | valid address, ≤ 254 |
 | description | `string` | 10–2000 chars |
 | summary | `string?` | AI output, ≤ 200 chars, null if unavailable |
-| imageUrl | `string?` | `uploads/{guid}.{ext}`; seed values point to files that don't exist → UI hides a broken image |
-| status | `TicketStatus` | `New`, `In Progress`, `Resolved`, `Closed` — `[JsonStringEnumMemberName("In Progress")]` (.NET 9) |
+| imageUrl | `string?` | `uploads/{guid}.{ext}`; seed values point to files that don't exist → UI shows a placeholder |
+| status | `TicketStatus` | `New`, `In Progress`, `Resolved`, `Closed` — serialized by the JSON adapter with `[JsonStringEnumMemberName("In Progress")]` (.NET 9); Core only knows the enum + its display names |
 | resolution | `string` | ≤ 2000, `""` when empty (as in dataset) |
-| createdAt / updatedAt | `DateTimeOffset` | UTC, ISO-8601 |
+| createdAt / updatedAt | `DateTimeOffset` | UTC from `TimeProvider` |
 
-No status-transition rules (any → any): the assignment doesn't define a workflow; noted as a possible extension.
+`Ticket.Apply(status, resolution)` returns a `TicketChange` (status changed? resolution changed?) — the domain,
+not the endpoint, decides what counts as a change. No status-transition rules (any → any): the assignment defines
+no workflow; noted as an extension.
 
 ---
 
@@ -100,123 +119,186 @@ No status-transition rules (any → any): the assignment doesn't define a workfl
 | Method | Route | Auth | Body / query | Success | Errors |
 |---|---|---|---|---|---|
 | GET | `/api/tickets` | — | `?status=In Progress&search=laptop` (search: name or description, case-insensitive) | 200 `TicketListItemDto[]`, newest first | 400 bad status |
-| GET | `/api/tickets/statuses` | — | — | 200 `string[]` (display names, in workflow order) | |
+| GET | `/api/tickets/statuses` | — | — | 200 `string[]` in workflow order | |
 | GET | `/api/tickets/{id:guid}` | optional | — | 200 `TicketDetailsDto` (email masked unless Admin) | 404 |
 | POST | `/api/tickets` | — | `multipart/form-data`: name, email, description, image? | 201 + `Location` + `TicketDetailsDto` | 400 validation, 413 too large |
 | PUT | `/api/tickets/{id:guid}` | **Admin** | JSON `{ status, resolution }` | 200 `TicketDetailsDto` | 400, 401, 403, 404 |
-| POST | `/api/auth/login` | — (rate-limited 5/min/IP) | `{ username, password }` | 200 `{ token, expiresAt, username }` | 401, 429 |
+| POST | `/api/auth/login` | — (rate-limited, configurable; default 5/min/IP, raised in `E2E`) | `{ username, password }` | 200 `{ token, expiresAt, username }` | 401, 429 |
 | GET | `/uploads/{file}` | — | — | image | 404 |
+| GET | `/health` | — | — | 200 `Healthy` | 503 |
 | GET | `/openapi/v1.json` (+ Scalar UI in Development) | — | | | |
 
-DTOs:
-- `TicketListItemDto`: id, name, description, summary, status, resolution, hasImage, createdAt, updatedAt — **no email** (D4).
-- `TicketDetailsDto`: all fields; `email` masked for non-admin.
+DTOs (Api project): `TicketListItemDto` — id, name, description, summary, status, resolution, hasImage,
+createdAt, updatedAt, **no email** (D4). `TicketDetailsDto` — all fields; `email` masked for non-admin.
 
 Implementation notes:
-- Endpoints grouped with `MapGroup("/api/tickets")`, `TypedResults`, thin: bind → call service → map result.
-- Validation: DataAnnotations on request records, run by `ValidationFilter<T>` → `TypedResults.ValidationProblem` (net9 has no built-in minimal-API validation).
-- `POST` uses `[FromForm]` → must call `.DisableAntiforgery()`: the API uses bearer tokens, not cookies, so CSRF does not apply. Comment this in code.
-- Image: jpg/png/webp, ≤ 5 MB, checked by **magic bytes** not just extension; saved as a new GUID filename (never the client's name).
+- Endpoints grouped with `MapGroup`, `TypedResults`, thin: bind → DTO → command → use case → DTO.
+- Validation: DataAnnotations on request records, run by `ValidationFilter<T>` → `TypedResults.ValidationProblem`.
+- `POST` uses `[FromForm]` → `.DisableAntiforgery()`: bearer tokens, no cookies, so CSRF does not apply (commented in code).
+- Image: jpg/png/webp, ≤ 5 MB, type decided by **magic bytes**; the adapter writes a new file under a GUID name
+  from the validated bytes only — the client's file name and content-type are never kept.
+- Any non-OK answer from an AI provider (incl. 429) is an error → null summary, never an empty string.
 
 ---
 
-## 5. Services and flows
+## 5. Use cases and adapters
 
-**Create:** validate → store image (if any) → `ISummaryService.SummarizeAsync(description)` with 10 s timeout, exception → log + null → `repository.Add` → email "Ticket received" with tracking link `{App:FrontendBaseUrl}/tickets/{id}` → 201.
+**Create:** validate (Api) → `IImageStore.SaveAsync` (if any) → `ISummaryGenerator.SummarizeAsync(description)`
+with a 10 s budget; exception/timeout → log + null → `repository.AddAsync` → `INotificationSender` "Ticket received"
+with tracking link `{App:FrontendBaseUrl}/tickets/{id}` (send failure → log only) → 201.
 
-**Update (Admin):** `repository.UpdateAsync(id, apply)` runs entirely under the lock (D15): load (404) → apply
-new status/resolution → nothing changed → keep as-is → else set `updatedAt = now` and write the file → return
-`(before, after)`. Outside the lock the service compares the pair: no change → no email; otherwise one email
-listing what changed (D10) → 200. If the file write fails, the in-memory cache is left untouched.
+**Update (Admin):** `repository.UpdateAsync(id, apply)` runs entirely under the lock (D15): load (404) →
+`Ticket.Apply(...)` → nothing changed → keep as-is → else set `updatedAt` and write the file → return `(before, after)`.
+Outside the lock the use case composes one email listing what changed (D10) → 200. A failed file write leaves the
+in-memory cache untouched.
 
-**AI prompt:** fixed system instruction ("summarize the support issue in one sentence, max 15 words, same language as the input, output only the summary"); the customer text is passed as a separate, delimited user message and treated as data; output trimmed; an answer far over the limit (> 40 words) is discarded as a bad summary (→ null), otherwise
-capped at 200 chars. Models configurable (`Ai:Gemini:Model`, `Ai:OpenAI:Model`); defaults are the cheapest
-fast model of each provider — a one-line summary does not need a large model. Typed `HttpClient`s, plain REST — no SDK, so every line is explainable.
+**AI prompt:** fixed system instruction ("summarize the support issue in one sentence, max 15 words, same
+language as the input, output only the summary"); the customer text goes in a separate, delimited user message
+and is treated as data; output trimmed; an answer > 40 words is discarded (→ null), otherwise capped at 200 chars.
+Models configurable (`Ai:Gemini:Model`, `Ai:OpenAI:Model`), defaults = the cheapest fast model of each provider.
+Typed `HttpClient`s, plain REST — no SDK, so every line is explainable.
 
-**Email:** `EmailMessage(to, subject, textBody, htmlBody)`. `ConsoleEmailService` logs it and keeps it in an in-memory outbox (used by tests). `SmtpEmailService` = MailKit, `smtp.gmail.com:587` StartTLS, credentials from user-secrets.
+**Notifications:** `Notification(to, subject, textBody, htmlBody)`. Console adapter logs it; Smtp adapter =
+MailKit, `smtp.gmail.com:587` StartTLS, credentials from user-secrets.
 
-**Persistence:** singleton `JsonTicketRepository`: lazy load once, all reads/writes under `SemaphoreSlim(1,1)`, write = serialize to `tickets.json.tmp` → `File.Move(overwrite: true)`. Returns copies so callers can't mutate the cache.
+**Persistence:** singleton `JsonTicketRepository`: lazy load once, all reads/writes under `SemaphoreSlim(1,1)`,
+write = serialize to `tickets.json.tmp` → `File.Move(overwrite: true)`. Returns copies so callers can't mutate
+the cache.
 
-**Auth:** `Auth:Admin:Username` + `Auth:Admin:PasswordHash` (ASP.NET `PasswordHasher` format); `dotnet run -- hash-password <pwd>` prints a hash. Login always runs the password-hash verification, even for an unknown username (against a fixed dummy hash),
-so response time does not reveal whether the username exists.
-JWT HS256, `Jwt:Issuer/Audience/SigningKey`, 60 min expiry, `role=Admin`, policy `AdminOnly`. Development defaults: `admin` / `Admin123!` (documented in README; production must override).
+**Auth (Api):** `Auth:Admin:Username` + `Auth:Admin:PasswordHash` (ASP.NET `PasswordHasher` format). Login always
+runs hash verification, even for an unknown username (against a fixed dummy hash), so timing does not reveal
+whether the user exists. JWT HS256, `Jwt:Issuer/Audience/SigningKey`, 60 min, `role=Admin`, policy `AdminOnly`.
+Development/E2E defaults: `admin` / `Admin123!` and a dev signing key (README says so); elsewhere missing values →
+startup error (D13).
 
-**Cross-cutting:** `AddProblemDetails` + `UseExceptionHandler`; CORS for `App:FrontendBaseUrl`; built-in rate limiter on login; structured logging.
+**Cross-cutting:** `AddProblemDetails` + `UseExceptionHandler`; CORS for `App:FrontendBaseUrl`; rate limiter
+registered after CORS so a 429 is readable by the browser; structured logging; health checks.
 
 ---
 
 ## 6. Frontend
 
-- `/` → `/tickets`. **TicketsPage:** status dropdown + search (debounced 300 ms), both mirrored into the URL query; table on ≥ md, cards on mobile; columns Name · Summary · Description (clamped, expandable) · Status badge · Updated.
-  Visitors: the whole row is one link to `/tickets/:id` (a real `<a>` stretched over the row, so it works with
-  keyboard and middle-click). **Admin (D16):** Status and Resolution cells become a dropdown and a text field,
-  changed rows are highlighted, one **Save changes** button sends a `PUT` per changed row and reports per-row
-  failures; the name cell stays a link to the detail page. Status options come from `/api/tickets/statuses`.
-  Load errors show a message with a **Retry** button; "New ticket" button → `NewTicketModal` (native `<dialog>`, Esc closes, focus returns; field-level errors from ProblemDetails; image preview; success toast with link to the new ticket).
-- **TicketDetailsPage** `/tickets/:id`: id (copy button), customer, description, AI summary, image, status, resolution, dates. Admin: status select + resolution textarea + Save (disabled until dirty; success/error toast). Non-admin: read-only + "Log in to edit". 404 → friendly not-found.
-- **LoginPage** `/login`: returns to the previous page after login. Header shows Login / "admin · Logout".
-- Token in `sessionStorage` (cleared with the tab), attached by `api/client.ts`; a 401 logs out.
-- Dev: Vite proxy `/api` and `/uploads` → backend, so no CORS needed locally.
-- Tailwind, own palette defined as tokens; accessible labels, focus rings, colour contrast AA, keyboard-usable table rows.
+- `/` → `/tickets`. **TicketsPage:** status dropdown + search (debounced 300 ms), mirrored into the URL query.
+  - **Desktop (≥ md): table** — Name · Summary · Description (clamped, expandable) · Status · Resolution · Updated.
+  - **Mobile (< md): cards** — same data, denser; no horizontal scroll at 375 px.
+  - Visitors: the whole row/card is one real `<a>` to `/tickets/:id` (keyboard and middle-click work).
+  - **Admin (D16):** Status becomes a dropdown and Resolution a text field in each row/card; changed items are
+    highlighted; a **Save changes** bar (sticky at the bottom on mobile, appears only when something is dirty)
+    sends one `PUT` per changed ticket and reports per-item failures. The name stays a link to the detail page.
+  - Status options come from `/api/tickets/statuses`. Load errors → message + **Retry**.
+  - **New ticket** button → `NewTicketModal` (native `<dialog>`, Esc closes, focus returns; full-screen sheet on
+    mobile; field errors from ProblemDetails; image preview; spinner while the AI summary is generated; success
+    toast with a link).
+- **TicketDetailsPage** `/tickets/:id`: id (copy button), customer, description, AI summary, image (placeholder if
+  missing), status, resolution, dates. Admin: status select + resolution textarea + Save (enabled when dirty).
+  Non-admin: read-only + "Log in to edit". Unknown id → not-found page.
+- **LoginPage** `/login`: returns to the previous page; 429 shows "too many attempts", not "wrong password".
+- Every async button (Submit, Save, Save changes, Login) is disabled from the first click by a `useRef` guard.
+- Token in `sessionStorage`, attached by `api/client.ts`; a 401 logs out.
+- Dev: Vite proxy `/api`, `/uploads` → backend. Production (Docker): nginx serves the build and proxies the same paths.
+- Tailwind with own palette tokens; one project-specific visual detail instead of template look; labels, focus
+  rings, AA contrast; `overflow-x` guard set on `html` (not only `body`).
 
 ---
 
-## 7. Tests (`SupportTickets.Api.Tests`, xUnit)
+## 7. Tests — a reasonable amount
 
-- Repository: seed load; **`dataset.json` load → save round-trip keeps every field, status spelling and date
-  format**; 20 parallel `Add`s → file valid with all 20; 2 concurrent updates of one ticket → both applied, each
-  sees the correct `before` (D15).
-- Auth: valid login → token with Admin role; wrong password and unknown user → 401.
-- TicketService: create sends 1 email with tracking link; status-only / resolution-only / both → exactly 1 email; no change → 0; AI throws → ticket saved with null summary.
-- Integration (`WebApplicationFactory`, temp `App_Data`): anon POST 201; anon PUT 401; admin PUT 200; filter by status + search; unknown id 404; list has no email; invalid body 400 with field errors.
+Principle: every required flow and every decision in §1 that is a rule has at least one test, **including the
+input it must reject**; no tests for framework behaviour or trivial getters. Before committing, each guard is
+briefly broken by hand to see its test fail.
 
-**Frontend end-to-end — Playwright** (`frontend/e2e/`, Chromium):
-- Playwright's `webServer` starts the real backend (`ASPNETCORE_ENVIRONMENT=E2E`: fresh temp data dir seeded
-  from `dataset.json`, `Ai:Provider=None`, `Email:Provider=Console`) and the Vite dev server — tests hit the
-  real API, nothing is mocked.
-- Specs: (1) list shows seed tickets, status filter + search narrow it and sync to the URL; (2) anonymous
-  user creates a ticket via the modal (incl. validation errors) and lands on its `/tickets/:id`;
-  (3) anonymous details page shows a masked email and no edit controls; (4) admin logs in, changes status +
-  resolution on the detail page, saves, the change survives a reload; (4b) admin edits two rows inline in the
-table and saves both with one click; (5) wrong password shows an error; (6) unknown id → not-found
-  page; (7) mobile viewport 375 px — no horizontal scroll, modal usable.
-- Test count principle: **reasonable, not exhaustive** — every required flow and every rule with a reason in §1
-  has at least one test; no tests for framework behaviour or trivial getters.
+**Backend (xUnit, `SupportTickets.Tests`):**
+- *Core* (use cases with fakes, `FakeTimeProvider`): create sends 1 email with the tracking link; AI throws or times
+  out → ticket saved with null summary; status-only / resolution-only / both → exactly 1 email; no change → 0;
+  notification sender throws → request still succeeds.
+- *Adapters:* JSON repository — `dataset.json` load → save round-trip keeps every field, status spelling and date
+  format; 20 parallel adds → valid file with all 20; 2 concurrent updates → both applied, each sees the correct
+  `before`. Image store — accepts a real PNG; rejects a `.png` with text content and a file > 5 MB. AI adapters —
+  with a stub `HttpMessageHandler`: success parsed; 429/500 → null; 60-word answer → null.
+- *Api* (`WebApplicationFactory`, temp `App_Data`): anon POST 201; anon PUT 401; admin PUT 200; filter + search;
+  unknown id 404; list has no email; details email masked for anon and full for admin; invalid body 400 with field
+  errors; login wrong password and unknown user → 401; non-Development environment without signing key → startup fails.
+- *Architecture:* Core's assembly references no `Microsoft.AspNetCore.*`, `MailKit`, `System.Net.Http`.
+
+**Frontend end-to-end — Playwright** (`frontend/e2e/`, Chromium, local workers capped, `exact: true` role names):
+- `webServer` starts the real backend on **5210** (`ASPNETCORE_ENVIRONMENT=E2E`: fresh temp data dir seeded from
+  `dataset.json`, `Ai:Provider=None`, `Email:Provider=Console`, high login limit) and Vite on **5211** — separate
+  from the dev ports, nothing mocked except where a spec stubs a failure with `page.route`.
+- Specs: (1) list, status filter + search, URL sync; (2) anonymous create via the modal incl. validation errors,
+  lands on `/tickets/:id`; (3) anonymous details: masked email, no edit controls; (4) admin edits on the detail
+  page, survives reload; (4b) admin edits two rows inline and saves both with one click; (5) wrong password →
+  error, 429 → "too many attempts" (stubbed); (6) unknown id → not-found; (7) mobile 375 px: no horizontal scroll,
+  cards, modal usable, admin edits a card via the sticky Save bar; (8) API down on list load → Retry works (stubbed).
 
 ---
 
-## 8. Commit plan (one topic per commit)
+## 8. Ports (local)
 
-1. scaffold: solution, API + tests projects, Vite app, gitignore `App_Data`
-2. backend: entities, DTOs, JSON repository (+ tests)
-3. backend: ticket service, endpoints, console email (+ tests)
-4. backend: JWT admin auth (+ tests)
-5. backend: AI summary providers
-6. backend: SMTP email, image upload
-7. frontend: tickets list + filters + new ticket modal
-8. frontend: ticket details + admin edit (detail page + inline table) + login
+| Use | Port |
+|---|---|
+| API (dev) | 5200 |
+| Vite (dev) | 5201 |
+| API (e2e) | 5210 |
+| Vite (e2e) | 5211 |
+| Docker: web (nginx) | 8080 → container 80; API not published, reached through nginx |
+
+---
+
+## 9. Commit plan (one topic per commit)
+
+1. scaffold: solution, Core/Adapters/Api/Tests projects, Vite app, `.gitignore` (`/App_Data/` anchored)
+2. core: domain, ports, use cases (+ tests with fakes, architecture test)
+3. adapters: JSON repository, console notifications, local image store (+ tests)
+4. api: endpoints, DTOs, validation, ProblemDetails (+ integration tests)
+5. api: JWT admin auth, rate limit, fail-closed secrets (+ tests)
+6. adapters: Gemini + OpenAI summary, SMTP notifications (+ tests)
+7. frontend: tickets list, filters, cards, new ticket modal
+8. frontend: details page, admin edit (detail + inline, desktop + mobile), login
 9. frontend: Playwright e2e suite
-10. README: run instructions, design decisions (this §1 with reasons), **Known limitations**, screenshots
+10. docker: Dockerfiles, nginx, compose, health
+11. README: run, design decisions (§1), scaling, known limitations, screenshots
 
 An independent code review pass runs before each large commit; the auth code gets the strictest one.
+A screenshot of visual work is checked before it is committed.
 
 ---
 
-## 9. Out of scope
+## 10. Out of scope
 
 Database, user registration / customer accounts, multiple admin users, token revocation, pagination (dataset is
-tiny; the whole file is filtered in memory — listed under Known limitations), background AI/email queues (D17), status workflow rules, frontend component unit tests (Playwright e2e covers the UI), Docker, deployment, i18n, real email delivery tracking.
+tiny; the whole file is filtered in memory — listed under Known limitations), background AI/email queues (D17),
+running more than one API replica (see §11), status workflow rules, frontend component unit tests (Playwright
+covers the UI), cloud deployment, i18n, real email delivery tracking.
 
 ---
 
-## 10. End-to-end verification
+## 11. Scaling (goes into README)
+
+Today the API is **single-instance** by design of the storage. What blocks scale-out and which adapter replaces it:
+
+| Bottleneck | Why | Scale-out replacement |
+|---|---|---|
+| JSON file + in-process cache + `SemaphoreSlim` | lock and cache live in one process; two containers overwrite each other | `ITicketRepository` → PostgreSQL/SQL Server adapter with optimistic concurrency (row version → 409) |
+| Images on local disk | each container has its own disk | `IImageStore` → S3 / Azure Blob adapter |
+| Email + AI inside the request | slow third party holds the request; a crash loses the email | outbox table + worker, or a queue (RabbitMQ/SQS) |
+| In-memory login rate limiter | counted per instance | Redis-backed limiter or API gateway |
+
+Already scale-ready: stateless JWT (shared signing key via secrets), config via environment variables, static
+frontend behind nginx/CDN, `/health` for orchestrators. **Core does not change for any of these** — that is the
+point of D2.
+
+---
+
+## 12. End-to-end verification
 
 1. `dotnet test` and `npm run test:e2e` (in `frontend/`) — all green.
-2. `dotnet run` (backend) + `npm run dev` (frontend); open `http://localhost:5173`.
-3. List shows the 5 seeded tickets; status filter "In Progress" → Jane Smith only; search "laptop" → John Doe only; URL reflects filters.
-4. Create a ticket with an image as anonymous → appears at top with AI summary (or none if `Ai:Provider=None`); console shows the "Ticket received" email with a working `/tickets/{id}` link; open it.
-5. Anonymous details page: email masked, no edit controls; direct `PUT` with curl → 401.
-6. Log in `admin` → change status and resolution together → one email in console; save with no changes → no email.
-   In the table, change two rows inline → one Save → two emails, both rows updated.
-7. Restart backend → changes persisted in `App_Data/tickets.json`; `dataset.json` unchanged (`git status` clean).
-8. Mobile width 375 px: no horizontal scroll, cards layout, modal usable.
+2. Dev: `dotnet run` (API :5200) + `npm run dev` (:5201) → open `http://localhost:5201`.
+3. List shows the 5 seeded tickets; status "In Progress" → Jane Smith only; search "laptop" → John Doe only; URL reflects filters.
+4. Create a ticket with an image as anonymous → appears at top with AI summary (or none with `Ai:Provider=None`);
+   console shows the "Ticket received" email with a working `/tickets/{id}` link; open it.
+5. Anonymous details page: email masked, no edit controls; `curl -X PUT` without a token → 401.
+6. Log in `admin` → change status and resolution together → one email in console; save with no changes → no
+   email. In the table, change two rows inline → one Save → two emails, both rows updated.
+7. Restart the API → changes persisted in `App_Data/tickets.json`; `dataset.json` unchanged (`git status` clean).
+8. Mobile width 375 px: cards, no horizontal scroll, modal usable, admin edits a card and saves.
+9. `docker compose up --build` → `http://localhost:8080` works the same; `/health` → Healthy.
