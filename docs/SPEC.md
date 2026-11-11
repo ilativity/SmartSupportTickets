@@ -68,7 +68,7 @@ SmartSupportTickets/
 │  │  │                 UpdateTicketRequest · LoginRequest · LoginResponse  (+ mapping, email masking)
 │  │  ├─ Auth/          JwtOptions · AdminOptions · TokenService · AdminCredentialsVerifier
 │  │  ├─ Validation/    ValidationFilter<T> (DataAnnotations for minimal APIs)
-│  │  ├─ Tools/         HashPasswordCommand (`dotnet run -- hash-password <pwd>`; no side effects on load)
+│  │  ├─ Tools/         HashPasswordCommand (`dotnet run -- hash-password`, password from stdin; no side effects on load)
 │  │  ├─ Dockerfile
 │  │  └─ appsettings.json · appsettings.Development.json · appsettings.E2E.json
 │  └─ SupportTickets.Tests/            # xUnit, no mocking library
@@ -172,6 +172,10 @@ runs hash verification, even for an unknown username (against a fixed dummy hash
 whether the user exists. JWT HS256, `Jwt:Issuer/Audience/SigningKey`, 60 min, `role=Admin`, policy `AdminOnly`.
 Development/E2E defaults: `admin` / `Admin123!` and a dev signing key (README says so); elsewhere missing values →
 startup error (D13).
+Startup also refuses: a key shorter than 32 chars, the public dev key (even padded) outside Development/E2E, a hash
+that is not a complete Identity V3 hash, `Jwt:LifetimeMinutes` outside 1–1440. Login limits: per IP (default 5/min)
+**and** a shared ceiling on all logins (default 30/min). Behind nginx (Docker) forwarded client IPs are trusted only
+from the compose network, otherwise every client would share the proxy's IP.
 
 **Cross-cutting:** `AddProblemDetails` + `UseExceptionHandler`; CORS for `App:FrontendBaseUrl`; rate limiter
 registered after CORS so a 429 is readable by the browser; structured logging; health checks.

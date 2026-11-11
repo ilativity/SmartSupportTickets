@@ -15,6 +15,9 @@ public static class TicketEndpoints
 {
     private const int MaxSearchLength = 100;
 
+    /// <summary>Authorization policy for editing: a valid admin JWT (D3).</summary>
+    public const string AdminOnlyPolicy = "AdminOnly";
+
     public static IEndpointRouteBuilder MapTicketEndpoints(this IEndpointRouteBuilder app)
     {
         var tickets = app.MapGroup("/api/tickets").WithTags("Tickets");
@@ -29,6 +32,10 @@ public static class TicketEndpoints
             // sessions from cross-site form posts (CSRF). This API keeps no cookies — admins authenticate with a
             // bearer token the browser never sends on its own — so there is nothing for CSRF to ride on.
             .DisableAntiforgery();
+
+        tickets.MapPut("/{id:guid}", UpdateAsync)
+            .RequireAuthorization(AdminOnlyPolicy)
+            .AddEndpointFilter<ValidationFilter<UpdateTicketRequest>>();
 
         return app;
     }
@@ -83,6 +90,24 @@ public static class TicketEndpoints
         return TypedResults.Created($"/api/tickets/{ticket.Id}", ticket.ToDetails(showEmail: false));
     }
 
-    // Replaced by the real role check when authentication is added (next commit); until then nobody is an admin.
-    private static bool IsAdmin(HttpContext http) => false;
+    private static async Task<Results<Ok<TicketDetailsDto>, NotFound, ValidationProblem>> UpdateAsync(
+        Guid id, UpdateTicketRequest request, ITicketUseCases useCases, CancellationToken ct)
+    {
+        if (!TicketStatusNames.TryParse(request.Status, out var status))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["status"] = [$"Unknown status. Use one of: {string.Join(", ", TicketStatusNames.All)}."],
+            });
+        }
+
+        var ticket = await useCases.UpdateAsync(new UpdateTicketCommand(id, status, request.Resolution), ct);
+        return ticket is null
+            ? TypedResults.NotFound()
+            : TypedResults.Ok(ticket.ToDetails(showEmail: true)); // only admins reach this endpoint
+    }
+
+    // An anonymous request, or one with an invalid/expired token, is simply not an admin: it still gets the ticket,
+    // with the email masked.
+    private static bool IsAdmin(HttpContext http) => http.User.IsInRole(SupportTickets.Api.Auth.TokenService.AdminRole);
 }

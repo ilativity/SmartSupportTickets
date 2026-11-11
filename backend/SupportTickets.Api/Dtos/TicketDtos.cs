@@ -49,6 +49,16 @@ public sealed class CreateTicketRequest
     public string? Description { get; set; }
 }
 
+/// <summary>An admin's edit (JSON). Both fields are always sent: the form shows both.</summary>
+public sealed class UpdateTicketRequest
+{
+    [Required(ErrorMessage = "Status is required.")]
+    public string? Status { get; set; }
+
+    [TrimmedLength(0, TicketRules.ResolutionMaxLength)]
+    public string? Resolution { get; set; }
+}
+
 /// <summary>Mapping between the domain and the HTTP contract, in one place.</summary>
 public static class TicketMapping
 {
