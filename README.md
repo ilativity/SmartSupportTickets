@@ -38,6 +38,17 @@ http://localhost:5200/scalar/v1.
 Emails are written to the API console by default (the "mock" the assignment allows) — the tracking link in them
 works. To start from the original five tickets again, stop the API and delete `backend/SupportTickets.Api/App_Data/`.
 
+### Or with Docker
+
+```bash
+docker compose up --build        # http://localhost:8080   (API + nginx-served frontend, data on a volume)
+```
+
+No .NET or Node needed. It starts as a local demo (Development: the same `admin` / `Admin123!`). For a real deployment
+copy [.env.example](.env.example) to `.env`: with `ASPNETCORE_ENVIRONMENT=Production` the API refuses to start until
+`JWT_SIGNING_KEY` and `ADMIN_PASSWORD_HASH` are set; AI and SMTP settings go there too. Exactly **one** API replica —
+see [Scaling](#scaling).
+
 ### Tests
 
 ```bash
@@ -158,6 +169,10 @@ The numbers refer to [docs/SPEC.md §1](docs/SPEC.md).
   Each file is stored under a new random name chosen by the server, and served only by an endpoint that accepts
   exactly such names, with `nosniff` and a restrictive Content-Security-Policy. The data folder itself is never
   served — it also holds `tickets.json`. No SVG: it can contain script.
+- **Behind a reverse proxy, client addresses are trusted only from the proxy.** In Docker every request reaches the
+  API from nginx, so per-IP limits would count all clients as one. nginx overwrites `X-Forwarded-For` with the real
+  address, and the API accepts that header only from the compose network — from anywhere else it would let a client
+  invent a new address per request.
 - **Strict input rules:** lengths are measured after trimming (what is stored), emails must be plain addresses
   (no display names, no line breaks), names are single-line; email subjects never contain customer text.
 
@@ -276,7 +291,8 @@ The API is single-instance by design of the storage. What blocks scale-out, and 
 | Email + AI inside the request | a slow provider holds the request; a crash loses the email | outbox table + worker, or a queue |
 | In-memory login rate limiter | counted per instance | Redis-backed limiter or API gateway |
 
-Already scale-ready: stateless JWT, configuration from environment variables, static frontend, `/health`.
+Already scale-ready: stateless JWT, configuration from environment variables, static frontend behind nginx, `/health`
+(used by the Docker health check), container images. `docker-compose.yml` runs exactly one API replica on purpose.
 
 ---
 

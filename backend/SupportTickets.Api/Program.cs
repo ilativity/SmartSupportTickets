@@ -1,6 +1,7 @@
 // Composition root (wires ports to adapters) and the HTTP driving adapter. Wiring only — no business logic here.
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using SupportTickets.Adapters;
@@ -90,6 +91,22 @@ builder.Services.AddRateLimiter(options =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = loginLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 
+// Behind a reverse proxy (nginx in Docker) every request arrives from the proxy's address, so per-IP limits would
+// count all clients as one. X-Forwarded-For is honoured ONLY from the configured proxy network — trusting it from
+// anyone would let a client pick a new "IP" per request and escape the limits.
+var trustedProxyNetwork = config["ReverseProxy:TrustedNetwork"];
+if (!string.IsNullOrWhiteSpace(trustedProxyNetwork))
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+        options.KnownNetworks.Add(Microsoft.AspNetCore.HttpOverrides.IPNetwork.Parse(trustedProxyNetwork));
+        options.ForwardLimit = 1; // only the address our own proxy wrote
+    });
+}
+
 // --- HTTP concerns ---
 // Every error, including unhandled exceptions and bare 401/403/404, is an RFC 7807 ProblemDetails JSON body,
 // so the frontend has one error shape to handle.
@@ -104,6 +121,11 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .AllowAnyMethod()));
 
 var app = builder.Build();
+
+if (!string.IsNullOrWhiteSpace(trustedProxyNetwork))
+{
+    app.UseForwardedHeaders(); // first: everything after it (rate limits, logs) sees the real client address
+}
 
 // CORS first, so that every response — errors and 429s included — carries CORS headers a cross-origin frontend
 // needs in order to read it (otherwise "too many attempts" would surface as an unreadable network error).

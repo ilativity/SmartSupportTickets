@@ -1,0 +1,14 @@
+# Keep build contexts small and free of local data and secrets.
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/App_Data/
+**/test-results/
+**/playwright-report/
+.git/
+.vs/
+.vscode/
+.env
+_internal/
+docs/

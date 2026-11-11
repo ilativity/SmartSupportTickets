@@ -303,6 +303,18 @@ public class SecretsPolicyTests
     }
 
     [Fact]
+    public async Task Development_with_empty_secret_variables_uses_the_defaults()
+    {
+        // What docker compose passes for variables that are not set.
+        using var api = new ApiFactory { Settings = { ["Jwt:SigningKey"] = "", ["Auth:Admin:PasswordHash"] = "" } };
+
+        var response = await api.CreateClient().PostAsJsonAsync("/api/auth/login",
+            new { username = "admin", password = AuthSecrets.DevelopmentAdminPassword });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public void A_malformed_password_hash_stops_startup()
     {
         using var api = new ApiFactory

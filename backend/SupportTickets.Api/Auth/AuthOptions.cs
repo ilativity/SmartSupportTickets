@@ -41,8 +41,9 @@ public static class AuthSecrets
     {
         if (AllowsDefaults(env))
         {
-            jwt.SigningKey ??= DevelopmentSigningKey;
-            admin.PasswordHash ??= PasswordHashing.Hash(DevelopmentAdminPassword);
+            // Empty counts as missing: docker compose passes "" for an unset variable, and "??=" would keep that "".
+            if (string.IsNullOrWhiteSpace(jwt.SigningKey)) jwt.SigningKey = DevelopmentSigningKey;
+            if (string.IsNullOrWhiteSpace(admin.PasswordHash)) admin.PasswordHash = PasswordHashing.Hash(DevelopmentAdminPassword);
         }
 
         if (string.IsNullOrWhiteSpace(jwt.SigningKey))

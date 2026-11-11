@@ -1,0 +1,51 @@
+# docker compose up --build   →   http://localhost:8080
+#
+# ONE API replica on purpose: tickets are stored in a JSON file guarded by an in-process lock, so two API
+# containers would overwrite each other's data. See README, "Scaling", for what scale-out would replace.
+#
+# Runs as a local demo by default (Development: the public demo admin password and signing key, interactive API
+# docs). For anything else copy .env.example to .env and set real secrets: with ASPNETCORE_ENVIRONMENT=Production
+# the API refuses to start without them.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/SupportTickets.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      App__FrontendBaseUrl: ${FRONTEND_BASE_URL:-http://localhost:8080}
+      # Trust X-Forwarded-For only from this compose network (i.e. from nginx), never from the internet.
+      ReverseProxy__TrustedNetwork: 172.28.0.0/16
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:-}
+      Auth__Admin__PasswordHash: ${ADMIN_PASSWORD_HASH:-}
+      Ai__Provider: ${AI_PROVIDER:-None}
+      Ai__Gemini__ApiKey: ${GEMINI_API_KEY:-}
+      Ai__OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      Email__Provider: ${EMAIL_PROVIDER:-Console}
+      Email__Smtp__Username: ${SMTP_USERNAME:-}
+      Email__Smtp__Password: ${SMTP_PASSWORD:-}
+      Email__Smtp__FromAddress: ${SMTP_FROM:-}
+    volumes:
+      - app_data:/data
+    networks: [app]
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [app]
+    restart: unless-stopped
+
+networks:
+  app:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  app_data:
