@@ -26,14 +26,19 @@ public static class DependencyInjection
         services.AddSingleton<IIdGenerator, GuidIdGenerator>();
 
         // AI summary (D7). An unknown name stops the app at startup rather than silently running without AI.
-        var aiProvider = config["Ai:Provider"] ?? "None";
-        switch (aiProvider.ToLowerInvariant())
+        var ai = config.GetSection("Ai").Get<AiOptions>() ?? new AiOptions();
+        switch (ai.Provider.ToLowerInvariant())
         {
             case "none":
                 services.AddSingleton<ISummaryGenerator, NoSummaryGenerator>();
                 break;
+            case "gemini":
+                ai.Gemini.ApiKey = RequireKey(ai.Gemini.ApiKey, "Ai:Gemini:ApiKey");
+                services.AddSingleton(ai.Gemini);
+                services.AddHttpClient<ISummaryGenerator, GeminiSummaryGenerator>(http => ConfigureAiClient(http, ai.Gemini.BaseUrl));
+                break;
             default:
-                throw new InvalidOperationException($"Unknown Ai:Provider '{aiProvider}'. Use None.");
+                throw new InvalidOperationException($"Unknown Ai:Provider '{ai.Provider}'. Use None or Gemini.");
         }
 
         // Email (D8).
@@ -48,6 +53,24 @@ public static class DependencyInjection
         }
 
         return services;
+    }
+
+    /// <summary>
+    /// Choosing a provider without its key is a configuration mistake: say so at startup, not per ticket. The key is
+    /// trimmed: a trailing newline from a secrets file would make every request header invalid.
+    /// </summary>
+    private static string RequireKey(string? key, string setting) =>
+        string.IsNullOrWhiteSpace(key)
+            ? throw new InvalidOperationException($"{setting} is required when that AI provider is selected.")
+            : key.Trim();
+
+    private static void ConfigureAiClient(HttpClient http, string baseUrl)
+    {
+        // Trailing slash so a base URL with a path (e.g. a proxy at https://host/gemini) keeps that path when the
+        // adapter appends its relative route.
+        http.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+        // A backstop only: the use case already gives the whole summary step a 10-second budget.
+        http.Timeout = TimeSpan.FromSeconds(15);
     }
 
     private sealed class GuidIdGenerator : IIdGenerator
