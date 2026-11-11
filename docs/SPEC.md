@@ -1,7 +1,7 @@
 # SPEC — Smart Customer Support System
 
 Source assignment: [docs/assignment/ASSIGNMENT.md](assignment/ASSIGNMENT.md)
-(upstream: https://github.com/oringilad/Dotnet_React_EX). Status: **draft v2, awaiting approval** (2026-11-11).
+(upstream: https://github.com/oringilad/Dotnet_React_EX). Status: **approved** (2026-11-11).
 
 Repository: **fork** of the upstream, renamed `ilativity/SmartSupportTickets` — the history shows the
 solution is built on the provided skeleton (upstream contained only the task, dataset, images and an empty
@@ -244,19 +244,30 @@ briefly broken by hand to see its test fail.
 
 ---
 
-## 9. Commit plan (one topic per commit)
+## 9. Delivery plan — two stages, one commit per logical change
 
+Deadline: Monday 2026-11-16, afternoon. The assignment is sized at ~4 h; this plan is ~7–11 h, so it is split
+so that **the end of Stage 1 is already a complete, submittable solution**. Time is stamped per chunk.
+
+**Stage 1 — complete solution (~4–5 h)**
 1. scaffold: solution, Core/Adapters/Api/Tests projects, Vite app, `.gitignore` (`/App_Data/` anchored)
 2. core: domain, ports, use cases (+ tests with fakes, architecture test)
-3. adapters: JSON repository, console notifications, local image store (+ tests)
-4. api: endpoints, DTOs, validation, ProblemDetails (+ integration tests)
+3. adapters: JSON repository, console notifications (+ tests)
+4. api: endpoints, DTOs, validation, ProblemDetails, `/health` (+ integration tests)
 5. api: JWT admin auth, rate limit, fail-closed secrets (+ tests)
-6. adapters: Gemini + OpenAI summary, SMTP notifications (+ tests)
-7. frontend: tickets list, filters, cards, new ticket modal
-8. frontend: details page, admin edit (detail + inline, desktop + mobile), login
-9. frontend: Playwright e2e suite
-10. docker: Dockerfiles, nginx, compose, health
-11. README: run, design decisions (§1), scaling, known limitations, screenshots
+6. adapters: Gemini summary (+ stub-HTTP tests)
+7. frontend: tickets list, filters, desktop table + mobile cards, new ticket modal
+8. frontend: details page, admin edit on the detail page, login
+9. e2e: specs 1, 2, 3, 4, 5, 6
+10. README v1: run, design decisions, known limitations, screenshots
+
+**Stage 2 — bonuses beyond the brief (~3–5 h)**
+11. adapters: OpenAI summary (provider chosen by config)
+12. adapters: SMTP notifications (MailKit)
+13. image upload: store adapter + endpoint + modal field + display
+14. admin inline editing in the table and mobile cards (D16 complete)
+15. docker: Dockerfiles, nginx, compose
+16. e2e: specs 4b, 7, 8; README: scaling section + final screenshots
 
 An independent code review pass runs before each large commit; the auth code gets the strictest one.
 A screenshot of visual work is checked before it is committed.
