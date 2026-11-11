@@ -10,7 +10,16 @@ public sealed class FakeImageStore : IImageStore
 
     public bool Fail { get; set; }
 
+    /// <summary>Runs right after a save — lets a test make "someone else" act at exactly that moment.</summary>
+    public Func<Task>? AfterSave { get; set; }
+
     public List<string> Deleted { get; } = [];
+
+    /// <summary>Images that exist besides the ones saved through this fake (e.g. "already on disk").</summary>
+    public HashSet<string> Existing { get; } = [];
+
+    public bool Exists(string url) =>
+        !Deleted.Contains(url) && (Existing.Contains(url) || Enumerable.Range(1, Saved.Count).Any(i => url == $"uploads/fake{i}.png"));
 
     public Task DeleteAsync(string url, CancellationToken ct)
     {
@@ -26,7 +35,8 @@ public sealed class FakeImageStore : IImageStore
         }
 
         Saved.Add((content.ToArray(), kind));
-        return Task.FromResult($"uploads/fake{Saved.Count}.png");
+        var url = $"uploads/fake{Saved.Count}.png";
+        return AfterSave is null ? Task.FromResult(url) : AfterSave().ContinueWith(_ => url);
     }
 }
 

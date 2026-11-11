@@ -26,7 +26,7 @@ The build follows this file. Every decision here is repeated with its reason in 
 | D8 | Notification port with **Console** (default) and **Smtp** (MailKit, Gmail App Password) adapters, chosen by `Email:Provider` | Mock is required, real SMTP is a bonus. Reviewer runs it with zero setup. |
 | D9 | **AI/email failures never fail the request** — logged, request succeeds | A ticket is the customer's data; a third-party outage must not lose it. |
 | D10 | Status + resolution changed in one save → **one** email listing both changes; no change → no email | Assignment lists 3 triggers; two emails for one click is noise. |
-| D11 | Optional **image upload** on create | Dataset has `imageUrl`, mockup has "Upload an image". |
+| D11 | Optional **image upload** on create; an **admin can add one later** to a ticket with no image or a broken link (owner's request 2026-11-12) — never replace a working one, no email | Dataset has `imageUrl`, mockup has "Upload an image". The image is part of the customer's request, so it is added to, not overwritten; the decisive "has no image" check runs inside the repository lock (D15). |
 | D12 | Frontend: **Vite + React + TypeScript + Tailwind**, React Router, TanStack Query. Only `src/api/` knows about `fetch`/HTTP | Typed API contract, cached server state, URL-addressable `/tickets/:id`. The `api/` module is the frontend's adapter boundary — a full hexagon in React would be overkill. |
 | D13 | Secrets only via `dotnet user-secrets` / env vars. **Only `Development` and `E2E` have built-in defaults; any other environment with a missing JWT key or admin hash refuses to start** | Public repo; a missing secret must fail closed, never run with a default key. |
 | D14 | Code comments: XML doc on public types/members + comments that explain **why** (not what) | Every line must be explainable; comments carry the reasoning. |
@@ -127,6 +127,7 @@ no workflow; noted as an extension.
 | GET | `/api/tickets/{id:guid}` | optional | — | 200 `TicketDetailsDto` (email masked unless Admin) | 404 |
 | POST | `/api/tickets` | — | `multipart/form-data`: name, email, description, image? | 201 + `Location` + `TicketDetailsDto` | 400 validation, 413 too large |
 | PUT | `/api/tickets/{id:guid}` | **Admin** | JSON `{ status, resolution }` | 200 `TicketDetailsDto` | 400, 401, 403, 404 |
+| POST | `/api/tickets/{id:guid}/image` | **Admin** | `multipart/form-data`: image | 200 `TicketDetailsDto` | 400, 401, 403, 404, 409 (has a working image) |
 | POST | `/api/auth/login` | — (rate-limited, configurable; default 5/min/IP, raised in `E2E`) | `{ username, password }` | 200 `{ token, expiresAt, username }` | 401, 429 |
 | GET | `/uploads/{file}` | — | — | image | 404 |
 | GET | `/health` | — | — | 200 `Healthy` | 503 |

@@ -65,6 +65,18 @@ public sealed class LocalImageStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Exists_is_true_only_for_stored_images()
+    {
+        var url = await Store.SaveAsync(TestImages.Png, ImageKind.Png, default);
+
+        Assert.True(Store.Exists(url));
+        Assert.True(Store.Exists("/" + url)); // the same image written with a leading slash
+        Assert.False(Store.Exists("uploads/laptop_issue.jpg")); // the sample dataset's names: no such file
+        Assert.False(Store.Exists("uploads/0123456789abcdef0123456789abcdef.png"));
+        Assert.False(Store.Exists(url["uploads/".Length..])); // without the prefix it is not one of our URLs
+    }
+
+    [Fact]
     public void Find_of_a_well_formed_but_missing_name_is_null() =>
         Assert.Null(Store.Find("0123456789abcdef0123456789abcdef.png"));
 }

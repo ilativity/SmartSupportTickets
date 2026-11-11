@@ -9,6 +9,14 @@ test('anonymous create: validation errors, then success lands on the new ticket'
   await expect(dialog).toBeVisible()
   await expect(dialog.getByLabel('Name')).toBeFocused()
 
+  // Required fields are marked before anything is submitted, visibly and for screen readers.
+  await expect(dialog.getByText('are required.')).toBeVisible()
+  // By role and exact accessible name: the asterisk is visual only, a screen reader hears "Name, required".
+  for (const label of ['Name', 'Email address', 'Description']) {
+    await expect(dialog.getByRole('textbox', { name: label, exact: true })).toHaveAttribute('aria-required', 'true')
+  }
+  await expect(dialog.getByLabel('Image (optional)')).not.toHaveAttribute('aria-required', 'true')
+
   await dialog.getByRole('button', { name: 'Submit', exact: true }).click()
   await expect(dialog.getByText('Name is required.')).toBeVisible()
   await expect(dialog.getByText('Email is required.')).toBeVisible()
@@ -34,6 +42,13 @@ test('anonymous create: validation errors, then success lands on the new ticket'
   await page.getByRole('link', { name: '← All tickets' }).click()
   await page.getByLabel('Search', { exact: true }).fill(name)
   await expect(page.getByRole('link', { name, exact: true })).toBeVisible()
+})
+
+test('buttons show the pointer cursor, including the dialog close button', async ({ page }) => {
+  await page.goto('/tickets')
+  await page.getByRole('button', { name: 'New ticket', exact: true }).click()
+  const close = page.getByRole('dialog', { name: 'New ticket' }).getByRole('button', { name: 'Close', exact: true })
+  expect(await close.evaluate((el) => getComputedStyle(el).cursor)).toBe('pointer')
 })
 
 test('Escape closes the modal and focus returns to the button', async ({ page }) => {

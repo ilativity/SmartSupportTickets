@@ -63,6 +63,14 @@ public sealed class UpdateTicketRequest
     public string? Resolution { get; set; }
 }
 
+/// <summary>An admin adding an image to a ticket that has none (multipart/form-data).</summary>
+public sealed class AttachImageRequest
+{
+    [Required(ErrorMessage = "Choose an image.")]
+    [ImageFile]
+    public IFormFile? Image { get; set; }
+}
+
 /// <summary>Mapping between the domain and the HTTP contract, in one place.</summary>
 public static class TicketMapping
 {

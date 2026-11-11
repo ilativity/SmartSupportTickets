@@ -3,19 +3,10 @@ import { ApiError } from '../api/client'
 import type { TicketDetails } from '../api/types'
 import { createTicket } from '../api/tickets'
 import { useInflightGuard } from '../hooks/useInflightGuard'
+import { IMAGE_TYPES, checkImage } from '../lib/images'
 import { Button, Field, inputClass } from './ui'
 
 type Errors = Partial<Record<'name' | 'email' | 'description' | 'image' | 'form', string>>
-
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-
-/** A quick check of what the browser says about the file; the server decides from the file's actual bytes. */
-function checkImage(file: File): string | undefined {
-  if (!IMAGE_TYPES.includes(file.type)) return 'The image must be a JPEG, PNG or WebP file.'
-  if (file.size > MAX_IMAGE_BYTES) return 'The image must be at most 5 MB.'
-  return undefined
-}
 
 /**
  * The same rules the API enforces (it re-checks everything). Checking here too only spares the customer a round trip;
@@ -157,19 +148,24 @@ export function NewTicketModal({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-          <Field id="ticket-name" label="Name" error={errors.name}>
+          <p className="text-xs text-slate-500">
+            Fields marked <span aria-hidden="true" className="text-red-700">*</span>
+            <span className="sr-only">with an asterisk</span> are required.
+          </p>
+          <Field id="ticket-name" label="Name" error={errors.name} required>
             <input
               id="ticket-name"
               className={inputClass}
               value={name}
               onChange={(e) => setName(e.target.value)}
+              aria-required="true"
               autoComplete="name"
               maxLength={100}
               aria-invalid={!!errors.name}
               aria-describedby={errors.name ? 'ticket-name-error' : undefined}
             />
           </Field>
-          <Field id="ticket-email" label="Email address" error={errors.email} hint="We email you a link to follow your ticket.">
+          <Field id="ticket-email" label="Email address" error={errors.email} hint="We email you a link to follow your ticket." required>
             <input
               id="ticket-email"
               type="email"
@@ -177,16 +173,18 @@ export function NewTicketModal({
               className={inputClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              aria-required="true"
               autoComplete="email"
               maxLength={254}
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? 'ticket-email-error' : undefined}
             />
           </Field>
-          <Field id="ticket-description" label="Description" error={errors.description}>
+          <Field id="ticket-description" label="Description" error={errors.description} required>
             <textarea
               id="ticket-description"
               rows={5}
+              aria-required="true"
               className={inputClass}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -214,7 +212,7 @@ export function NewTicketModal({
                 }}
                 aria-invalid={!!errors.image}
                 aria-describedby={errors.image ? 'ticket-image-error' : undefined}
-                className="block w-full text-sm text-slate-700 file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
+                className="block w-full text-sm text-slate-700 file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
               />
             )}
           </Field>

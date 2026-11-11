@@ -32,6 +32,13 @@ export function createTicket(ticket: NewTicket): Promise<TicketDetails> {
   return request<TicketDetails>('/api/tickets', { method: 'POST', body: form })
 }
 
+/** Admin only: adds an image to a ticket that has none (or only a broken link). 409 if it already has one. */
+export function attachImage(id: string, image: File): Promise<TicketDetails> {
+  const form = new FormData()
+  form.set('image', image)
+  return request<TicketDetails>(`/api/tickets/${encodeURIComponent(id)}/image`, { method: 'POST', body: form })
+}
+
 export function updateTicket(id: string, update: TicketUpdate): Promise<TicketDetails> {
   return request<TicketDetails>(`/api/tickets/${encodeURIComponent(id)}`, {
     method: 'PUT',

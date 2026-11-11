@@ -83,6 +83,48 @@ public sealed class TicketUseCases(
         return update.After;
     }
 
+    public async Task<AttachImageResult> AttachImageAsync(Guid id, ImageUpload image, CancellationToken ct)
+    {
+        // A quick check first, so an upload to a ticket that already has an image is refused without writing a file.
+        var current = await repository.GetAsync(id, ct);
+        if (current is null)
+        {
+            return new AttachImageResult(AttachImageOutcome.NotFound);
+        }
+
+        if (HasWorkingImage(current))
+        {
+            return new AttachImageResult(AttachImageOutcome.AlreadyHasImage);
+        }
+
+        var url = await imageStore.SaveAsync(image.Content, image.Kind, ct);
+        TicketUpdate? update;
+        try
+        {
+            // The decisive check runs inside the repository's lock (D15): if another admin attached an image in the
+            // meantime, the ticket comes back unchanged and this upload is refused instead of overwriting theirs.
+            update = await repository.UpdateAsync(
+                id,
+                ticket => HasWorkingImage(ticket) ? ticket : ticket.AttachImage(url, timeProvider.GetUtcNow()),
+                ct);
+        }
+        catch
+        {
+            await imageStore.DeleteAsync(url, CancellationToken.None);
+            throw;
+        }
+
+        if (update is null || ReferenceEquals(update.Before, update.After))
+        {
+            await imageStore.DeleteAsync(url, CancellationToken.None); // nothing points at the new file
+            return new AttachImageResult(update is null ? AttachImageOutcome.NotFound : AttachImageOutcome.AlreadyHasImage);
+        }
+
+        return new AttachImageResult(AttachImageOutcome.Attached, update.After);
+    }
+
+    private bool HasWorkingImage(Ticket ticket) => ticket.ImageUrl is { } url && imageStore.Exists(url);
+
     /// <summary>Asks the AI provider for a summary; any failure or timeout becomes "no summary" (D9).</summary>
     private async Task<string?> TrySummarizeAsync(string description, CancellationToken requestAborted)
     {

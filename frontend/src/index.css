@@ -53,6 +53,11 @@ input[type="search"]::-webkit-search-cancel-button {
   appearance: none;
 }
 
+/* Tailwind's base styles give buttons the default arrow cursor; every clickable button shows the hand instead. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 /* Native <dialog> backdrop (New ticket modal). */
 dialog::backdrop {
   background: rgb(15 23 42 / 0.5);

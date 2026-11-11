@@ -24,7 +24,23 @@ public interface ITicketUseCases
     /// Returns the updated ticket, or null if there is none with this id.
     /// </summary>
     Task<Ticket?> UpdateAsync(UpdateTicketCommand command, CancellationToken ct);
+
+    /// <summary>
+    /// Adds an image to a ticket that has none (or only a broken link). Never replaces a working image. No email:
+    /// the customer is told about status and resolution changes only.
+    /// </summary>
+    Task<AttachImageResult> AttachImageAsync(Guid id, ImageUpload image, CancellationToken ct);
 }
+
+public enum AttachImageOutcome
+{
+    Attached,
+    NotFound,
+    AlreadyHasImage,
+}
+
+/// <summary>What happened; <see cref="Ticket"/> is set only when the image was attached.</summary>
+public sealed record AttachImageResult(AttachImageOutcome Outcome, Ticket? Ticket = null);
 
 /// <summary>Input of <see cref="ITicketUseCases.CreateAsync"/>; already validated by the caller.</summary>
 public sealed record CreateTicketCommand(string Name, string Email, string Description, ImageUpload? Image = null);

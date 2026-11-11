@@ -47,18 +47,23 @@ export function Field({
   label,
   error,
   hint,
+  required = false,
   children,
 }: {
   id: string
   label: string
   error?: string
   hint?: string
+  /** Shows a red asterisk. The control itself carries aria-required, so screen readers say "required". */
+  required?: boolean
   children: ReactNode
 }) {
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700">
         {label}
+        {/* Hidden from screen readers: the accessible name stays "Name", and aria-required says the rest. */}
+        {required && <span aria-hidden="true" className="ml-0.5 text-red-700">*</span>}
       </label>
       {children}
       {hint && !error && <p className="mt-1 text-xs text-slate-500">{hint}</p>}

@@ -38,15 +38,27 @@ public sealed partial class LocalImageStore(ImageStoreOptions options) : IImageS
         return UrlPrefix + name;
     }
 
+    public bool Exists(string url) => FindByUrl(url) is not null;
+
     public Task DeleteAsync(string url, CancellationToken ct)
     {
         // Only names this store makes; anything else is ignored rather than turned into a path.
-        if (url.StartsWith(UrlPrefix, StringComparison.Ordinal) && Find(url[UrlPrefix.Length..]) is { } image)
+        if (FindByUrl(url) is { } image)
         {
             File.Delete(image.Path);
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// "uploads/x.png" or "/uploads/x.png" (the API serves stored URLs with a leading slash, and a hand-edited data file
+    /// may keep one) — both mean the same image, so an existing image is never mistaken for a missing one.
+    /// </summary>
+    private (string Path, ImageKind Kind)? FindByUrl(string url)
+    {
+        var relative = url.TrimStart('/');
+        return relative.StartsWith(UrlPrefix, StringComparison.Ordinal) ? Find(relative[UrlPrefix.Length..]) : null;
     }
 
     /// <summary>

@@ -42,6 +42,9 @@ public sealed record Ticket
             UpdatedAt = now,
         };
 
+    /// <summary>Links an uploaded image to the ticket (an admin adding one later, when the ticket had none).</summary>
+    public Ticket AttachImage(string imageUrl, DateTimeOffset now) => this with { ImageUrl = imageUrl, UpdatedAt = now };
+
     /// <summary>
     /// Applies an admin's edit. Returns <b>this same instance</b> when nothing actually changes, so callers (and the
     /// repository, which then skips the file write) can tell "saved without changes" apart from a real change, and

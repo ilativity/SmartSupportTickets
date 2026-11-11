@@ -43,6 +43,12 @@ public static class TicketEndpoints
             .RequireAuthorization(AdminOnlyPolicy)
             .AddEndpointFilter<ValidationFilter<UpdateTicketRequest>>();
 
+        tickets.MapPost("/{id:guid}/image", AttachImageAsync)
+            .RequireAuthorization(AdminOnlyPolicy)
+            .AddEndpointFilter<ValidationFilter<AttachImageRequest>>()
+            .WithMetadata(new RequestSizeLimitAttribute(6 * 1024 * 1024))
+            .DisableAntiforgery(); // bearer token, no cookies: see the note on POST /api/tickets
+
         return app;
     }
 
@@ -108,6 +114,19 @@ public static class TicketEndpoints
         await file.CopyToAsync(buffer, ct);
         var bytes = buffer.ToArray();
         return new ImageUpload(bytes, ImageFormat.Detect(bytes.AsSpan(0, Math.Min(bytes.Length, ImageFormat.HeaderLength)))!.Value);
+    }
+
+    private static async Task<Results<Ok<TicketDetailsDto>, NotFound, ProblemHttpResult>> AttachImageAsync(
+        Guid id, [FromForm] AttachImageRequest request, ITicketUseCases useCases, CancellationToken ct)
+    {
+        var result = await useCases.AttachImageAsync(id, (await ReadImageAsync(request.Image, ct))!, ct);
+        return result.Outcome switch
+        {
+            AttachImageOutcome.Attached => TypedResults.Ok(result.Ticket!.ToDetails(showEmail: true)),
+            AttachImageOutcome.NotFound => TypedResults.NotFound(),
+            // Replacing what the customer sent is not offered: the image is part of their request.
+            _ => TypedResults.Problem("This ticket already has an image.", statusCode: StatusCodes.Status409Conflict),
+        };
     }
 
     private static async Task<Results<Ok<TicketDetailsDto>, NotFound, ValidationProblem>> UpdateAsync(

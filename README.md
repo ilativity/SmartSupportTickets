@@ -71,7 +71,8 @@ npm run test:e2e                  # 29 Playwright specs (desktop + 375 px phone)
 | Feature | Where |
 |---|---|
 | Ticket list with status filter and text search (name or description), newest first; filters live in the URL | `/tickets` |
-| New ticket form in a modal, optional image with preview; validation messages per field; AI summary generated while saving | "New ticket" |
+| New ticket form in a modal: required fields marked, optional image with preview, validation messages per field; AI summary generated while saving | "New ticket" |
+| Admin adds an image later to a ticket that has none (never replaces the customer's) | details page |
 | Ticket page `/tickets/{id}` — the link the customer gets by email | details page |
 | Admin login (JWT); admins change status and resolution — on the ticket page, or for many tickets at once right in the list (table rows / phone cards) with one Save | `/login`, list, details page |
 | Email on ticket created, on status change and on resolution change — one email per save | API console (or SMTP) |
@@ -115,6 +116,7 @@ no domain events, no generic Result types — every line should be explainable.
 | POST | `/api/tickets` | anyone | `multipart/form-data` incl. optional `image`; 201 + `Location` |
 | GET | `/uploads/{file}` | anyone | stored images only |
 | PUT | `/api/tickets/{id}` | admin | `{ status, resolution }` |
+| POST | `/api/tickets/{id}/image` | admin | adds an image when the ticket has none (or a broken link); 409 if it has one |
 | POST | `/api/auth/login` | anyone | rate-limited; `{ token, expiresAt, username }` |
 | GET | `/health` | anyone | for Docker / orchestrators |
 
