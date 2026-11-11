@@ -55,7 +55,7 @@ npm run test:e2e                  # starts its own API (5210) and frontend (5211
 | Feature | Where |
 |---|---|
 | Ticket list with status filter and text search (name or description), newest first; filters live in the URL | `/tickets` |
-| New ticket form in a modal; validation messages per field; AI summary generated while saving | "New ticket" |
+| New ticket form in a modal, optional image with preview; validation messages per field; AI summary generated while saving | "New ticket" |
 | Ticket page `/tickets/{id}` — the link the customer gets by email | details page |
 | Admin login (JWT); admins change status and resolution | `/login`, details page |
 | Email on ticket created, on status change and on resolution change — one email per save | API console (or SMTP) |
@@ -72,9 +72,9 @@ backend/
   SupportTickets.Core/       the hexagon — domain, ports, use cases. No ASP.NET, no HTTP client, no JSON library.
     Domain/                  Ticket (immutable record), TicketStatus + display names, TicketChange, field limits
     Ports/In/                ITicketUseCases — what the outside world can ask for
-    Ports/Out/               ITicketRepository, ISummaryGenerator, INotificationSender, IIdGenerator
+    Ports/Out/               ITicketRepository, ISummaryGenerator, INotificationSender, IImageStore, IIdGenerator
     Application/             TicketUseCases, NotificationComposer (email texts), SummaryRules
-  SupportTickets.Adapters/   driven adapters: JSON file repository, Gemini, OpenAI, console + SMTP email; DI wiring by config
+  SupportTickets.Adapters/   driven adapters: JSON file repository, local image store, Gemini, OpenAI, console + SMTP email
   SupportTickets.Api/        driving adapter (HTTP endpoints, DTOs, validation, JWT) + composition root
   SupportTickets.Tests/      xUnit; fakes for every port; WebApplicationFactory integration tests
 frontend/                    React app; only src/api/ knows about HTTP
@@ -96,7 +96,8 @@ no domain events, no generic Result types — every line should be explainable.
 | GET | `/api/tickets?status=&search=` | anyone | no emails in the list |
 | GET | `/api/tickets/statuses` | anyone | `New`, `In Progress`, `Resolved`, `Closed` |
 | GET | `/api/tickets/{id}` | anyone | email masked (`j***@example.com`) unless admin |
-| POST | `/api/tickets` | anyone | `multipart/form-data`; 201 + `Location` |
+| POST | `/api/tickets` | anyone | `multipart/form-data` incl. optional `image`; 201 + `Location` |
+| GET | `/uploads/{file}` | anyone | stored images only |
 | PUT | `/api/tickets/{id}` | admin | `{ status, resolution }` |
 | POST | `/api/auth/login` | anyone | rate-limited; `{ token, expiresAt, username }` |
 | GET | `/health` | anyone | for Docker / orchestrators |
@@ -152,6 +153,11 @@ The numbers refer to [docs/SPEC.md §1](docs/SPEC.md).
 - **No anti-forgery on the form endpoint, on purpose.** ASP.NET Core requires it for form binding by default. It
   protects cookie sessions from cross-site posts (CSRF); this API keeps no cookies — the admin token is a bearer
   header the browser never sends on its own — so there is nothing for CSRF to ride on.
+- **Uploaded images are judged by their bytes, not their name (D11).** JPEG, PNG or WebP up to 5 MB, recognised
+  from the file's first bytes; the browser's file name and Content-Type are ignored (both are chosen by the client).
+  Each file is stored under a new random name chosen by the server, and served only by an endpoint that accepts
+  exactly such names, with `nosniff` and a restrictive Content-Security-Policy. The data folder itself is never
+  served — it also holds `tickets.json`. No SVG: it can contain script.
 - **Strict input rules:** lengths are measured after trimming (what is stored), emails must be plain addresses
   (no display names, no line breaks), names are single-line; email subjects never contain customer text.
 
@@ -209,6 +215,7 @@ repository.**
 | `Auth:Admin:PasswordHash` | hash of `Admin123!` in Development/E2E only | **secret**; see below |
 | `Auth:LoginRateLimit:PermitLimit` | `5` | login attempts per IP per minute |
 | `Auth:LoginRateLimit:GlobalPermitLimit` | `30` | login attempts per minute, all clients together |
+| `Tickets:CreateRateLimit:PermitLimit` | `10` | new tickets per IP per minute (each may carry a 5 MB image) |
 
 Turn on the AI summary (development):
 
@@ -250,6 +257,8 @@ dotnet run -- hash-password
 - **Single instance.** The JSON file, its lock and the cache live in one process; see [Scaling](#scaling).
 - **No pagination** — the whole (small) file is filtered in memory.
 - **One admin account**, no token revocation (tokens expire after an hour).
+- **Attached images are public** like the ticket page itself (anyone with the link); there is no disk quota beyond
+  the per-IP limit on creating tickets.
 - **Emails after two very quick edits** may be delivered out of order; each one is correct on its own.
 - The sample tickets' image files are not part of the dataset; the UI shows a placeholder for them.
 - Not done on purpose: customer accounts, status workflow rules (any status may follow any other — the brief
@@ -263,6 +272,7 @@ The API is single-instance by design of the storage. What blocks scale-out, and 
 | Bottleneck | Why | Replacement |
 |---|---|---|
 | JSON file + in-process cache + lock | lock and cache live in one process | `ITicketRepository` → PostgreSQL/SQL Server adapter with optimistic concurrency |
+| Images on local disk | each instance has its own disk | `IImageStore` → S3 / Azure Blob adapter |
 | Email + AI inside the request | a slow provider holds the request; a crash loses the email | outbox table + worker, or a queue |
 | In-memory login rate limiter | counted per instance | Redis-backed limiter or API gateway |
 

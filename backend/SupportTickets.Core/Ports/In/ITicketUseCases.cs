@@ -27,7 +27,10 @@ public interface ITicketUseCases
 }
 
 /// <summary>Input of <see cref="ITicketUseCases.CreateAsync"/>; already validated by the caller.</summary>
-public sealed record CreateTicketCommand(string Name, string Email, string Description);
+public sealed record CreateTicketCommand(string Name, string Email, string Description, ImageUpload? Image = null);
+
+/// <summary>An uploaded image whose type was already decided from its bytes (<see cref="ImageFormat.Detect"/>).</summary>
+public sealed record ImageUpload(ReadOnlyMemory<byte> Content, ImageKind Kind);
 
 /// <summary>Input of <see cref="ITicketUseCases.UpdateAsync"/>; already validated by the caller.</summary>
 public sealed record UpdateTicketCommand(Guid Id, TicketStatus Status, string? Resolution);

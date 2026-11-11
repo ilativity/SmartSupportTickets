@@ -47,6 +47,10 @@ public sealed class CreateTicketRequest
     [Required(ErrorMessage = "Description is required.")]
     [TrimmedLength(TicketRules.DescriptionMinLength, TicketRules.DescriptionMaxLength)]
     public string? Description { get; set; }
+
+    /// <summary>Optional; JPEG, PNG or WebP up to 5 MB, judged by its bytes (D11).</summary>
+    [ImageFile]
+    public IFormFile? Image { get; set; }
 }
 
 /// <summary>An admin's edit (JSON). Both fields are always sent: the form shows both.</summary>

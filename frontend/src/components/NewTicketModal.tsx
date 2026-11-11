@@ -5,7 +5,17 @@ import { createTicket } from '../api/tickets'
 import { useInflightGuard } from '../hooks/useInflightGuard'
 import { Button, Field, inputClass } from './ui'
 
-type Errors = Partial<Record<'name' | 'email' | 'description' | 'form', string>>
+type Errors = Partial<Record<'name' | 'email' | 'description' | 'image' | 'form', string>>
+
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+/** A quick check of what the browser says about the file; the server decides from the file's actual bytes. */
+function checkImage(file: File): string | undefined {
+  if (!IMAGE_TYPES.includes(file.type)) return 'The image must be a JPEG, PNG or WebP file.'
+  if (file.size > MAX_IMAGE_BYTES) return 'The image must be at most 5 MB.'
+  return undefined
+}
 
 /**
  * The same rules the API enforces (it re-checks everything). Checking here too only spares the customer a round trip;
@@ -43,8 +53,27 @@ export function NewTicketModal({
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [description, setDescription] = useState('')
+  const [image, setImage] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const [errors, setErrors] = useState<Errors>({})
   const { run, busy } = useInflightGuard()
+
+  // A local preview URL for the chosen image, released when it changes or the form closes (no memory leak).
+  useEffect(() => {
+    if (!image) {
+      setPreview(null)
+      return
+    }
+    const url = URL.createObjectURL(image)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [image])
+
+  function chooseImage(file: File | undefined) {
+    const problem = file ? checkImage(file) : undefined
+    setErrors((current) => ({ ...current, image: problem }))
+    setImage(file && !problem ? file : null)
+  }
 
   useEffect(() => {
     const d = dialog.current
@@ -62,6 +91,7 @@ export function NewTicketModal({
   function handleClose() {
     onClose()
     setErrors({})
+    setImage(null)
     if (opener.current instanceof HTMLElement) opener.current.focus()
   }
 
@@ -78,21 +108,23 @@ export function NewTicketModal({
 
     await run(async () => {
       try {
-        const ticket = await createTicket({ name, email, description })
+        const ticket = await createTicket({ name, email, description, image })
         setName('')
         setEmail('')
         setDescription('')
+        setImage(null)
         onCreated(ticket)
       } catch (error) {
         if (error instanceof ApiError && Object.keys(error.fieldErrors).length) {
           const fe = error.fieldErrors
-          const shown = ['name', 'email', 'description']
+          const shown = ['name', 'email', 'description', 'image']
           // Messages for fields this form does not show still have to reach the user.
           const other = Object.entries(fe).filter(([key]) => !shown.includes(key)).flatMap(([, messages]) => messages)
           setErrors({
             name: fe.name?.[0],
             email: fe.email?.[0],
             description: fe.description?.[0],
+            image: fe.image?.[0],
             form: other.length ? other.join(' ') : undefined,
           })
           const first = shown.find((key) => fe[key]?.length)
@@ -162,6 +194,29 @@ export function NewTicketModal({
               aria-invalid={!!errors.description}
               aria-describedby={errors.description ? 'ticket-description-error' : undefined}
             />
+          </Field>
+          <Field id="ticket-image" label="Image (optional)" error={errors.image} hint="JPEG, PNG or WebP, up to 5 MB.">
+            {preview ? (
+              <div className="flex items-center gap-3">
+                <img src={preview} alt="Selected image preview" className="size-20 rounded-lg border border-slate-200 object-cover" />
+                <Button type="button" variant="secondary" onClick={() => chooseImage(undefined)}>
+                  Remove image
+                </Button>
+              </div>
+            ) : (
+              <input
+                id="ticket-image"
+                type="file"
+                accept={IMAGE_TYPES.join(',')}
+                onChange={(e) => {
+                  chooseImage(e.target.files?.[0])
+                  e.target.value = '' // choosing the same file again after removing it must fire onChange
+                }}
+                aria-invalid={!!errors.image}
+                aria-describedby={errors.image ? 'ticket-image-error' : undefined}
+                className="block w-full text-sm text-slate-700 file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:font-semibold file:text-brand-700 hover:file:bg-brand-100"
+              />
+            )}
           </Field>
           {errors.form && (
             <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{errors.form}</p>

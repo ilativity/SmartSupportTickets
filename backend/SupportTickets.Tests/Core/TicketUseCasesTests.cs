@@ -15,10 +15,11 @@ public class TicketUseCasesTests
     private readonly NotificationComposer _composer = new(new Uri("http://localhost:5201"));
 
     private readonly CapturingLogger<TicketUseCases> _log = new();
+    private readonly FakeImageStore _images = new();
 
     private TicketUseCases UseCases(FakeSummaryGenerator? ai = null) =>
         new(_repository, ai ?? FakeSummaryGenerator.Returns("Laptop overheats."), _mail, _composer,
-            new SequentialIdGenerator(), _time, _log);
+            new SequentialIdGenerator(), _images, _time, _log);
 
     private static CreateTicketCommand NewTicket() =>
         new(" John Doe ", "john.doe@example.com", "My laptop overheats after ten minutes.");
@@ -113,6 +114,40 @@ public class TicketUseCasesTests
         Assert.Empty(_mail.Outbox);
         // A client closing the tab is not an AI outage; reporting it as one would hide real outages in noise.
         Assert.DoesNotContain(_log.Entries, e => e.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Create_with_an_image_stores_it_and_links_it_to_the_ticket()
+    {
+        var command = NewTicket() with { Image = new ImageUpload(TestImages.Png, ImageKind.Png) };
+
+        var ticket = await UseCases().CreateAsync(command, default);
+
+        Assert.Equal("uploads/fake1.png", ticket.ImageUrl);
+        Assert.Equal(TestImages.Png, Assert.Single(_images.Saved).Content);
+    }
+
+    [Fact]
+    public async Task Create_fails_without_saving_when_the_image_cannot_be_stored()
+    {
+        _images.Fail = true;
+        var command = NewTicket() with { Image = new ImageUpload(TestImages.Png, ImageKind.Png) };
+
+        await Assert.ThrowsAsync<IOException>(() => UseCases().CreateAsync(command, default));
+        Assert.Empty(_repository.All);
+        Assert.Empty(_mail.Outbox);
+    }
+
+    [Fact]
+    public async Task An_image_whose_ticket_could_not_be_saved_is_deleted_again()
+    {
+        _repository.FailOnAdd = true;
+        var command = NewTicket() with { Image = new ImageUpload(TestImages.Png, ImageKind.Png) };
+
+        await Assert.ThrowsAsync<IOException>(() => UseCases().CreateAsync(command, default));
+
+        Assert.Equal(["uploads/fake1.png"], _images.Deleted);
+        Assert.Empty(_mail.Outbox);
     }
 
     // ---- update ----

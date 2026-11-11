@@ -53,7 +53,7 @@ SmartSupportTickets/
 │  │  ├─ Domain/        Ticket · TicketStatus + TicketStatusNames · TicketChange · TicketRules (field limits)
 │  │  ├─ Ports/In/      ITicketUseCases (List, Get, Create, Update) + commands/query; statuses come from TicketStatusNames
 │  │  │                 (CreateTicketCommand, UpdateTicketCommand, TicketQuery)
-│  │  ├─ Ports/Out/     ITicketRepository · ISummaryGenerator · INotificationSender · IIdGenerator · IImageStore (added with uploads, commit 13)
+│  │  ├─ Ports/Out/     ITicketRepository · ISummaryGenerator · INotificationSender · IIdGenerator · IImageStore
 │  │  └─ Application/   TicketUseCases (implements Ports/In using Ports/Out) · NotificationComposer (email texts) · SummaryRules
 │  ├─ SupportTickets.Adapters/         # DRIVEN adapters — implement Ports/Out; named by technology
 │  │  ├─ Persistence/   JsonTicketRepository · JsonStorageOptions

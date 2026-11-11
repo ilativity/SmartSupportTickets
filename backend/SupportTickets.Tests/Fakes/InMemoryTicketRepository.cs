@@ -12,6 +12,9 @@ public sealed class InMemoryTicketRepository : ITicketRepository
 
     public int Writes { get; private set; }
 
+    /// <summary>Makes the next adds fail, like a full disk.</summary>
+    public bool FailOnAdd { get; set; }
+
     public InMemoryTicketRepository(params Ticket[] seed) => _tickets.AddRange(seed);
 
     public IReadOnlyList<Ticket> All => _tickets.ToList();
@@ -27,6 +30,11 @@ public sealed class InMemoryTicketRepository : ITicketRepository
         await _lock.WaitAsync(ct);
         try
         {
+            if (FailOnAdd)
+            {
+                throw new IOException("disk full");
+            }
+
             _tickets.Add(ticket);
             Writes++;
         }

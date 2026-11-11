@@ -60,6 +60,34 @@ public sealed partial class StrictEmailAttribute : ValidationAttribute
 }
 
 /// <summary>
+/// An uploaded image: not empty, at most <see cref="ImageFormat.MaxBytes"/>, and a JPEG, PNG or WebP <b>by its
+/// content</b>. The file name and the Content-Type the browser sent are ignored: both are chosen by the client.
+/// </summary>
+public sealed class ImageFileAttribute : ValidationAttribute
+{
+    protected override ValidationResult? IsValid(object? value, ValidationContext context)
+    {
+        if (value is not IFormFile file)
+        {
+            return ValidationResult.Success; // optional
+        }
+
+        if (file.Length == 0 || file.Length > SupportTickets.Core.Domain.ImageFormat.MaxBytes)
+        {
+            return new ValidationResult("The image must be at most 5 MB.", [context.MemberName!]);
+        }
+
+        Span<byte> header = stackalloc byte[SupportTickets.Core.Domain.ImageFormat.HeaderLength];
+        using var stream = file.OpenReadStream();
+        var read = stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
+
+        return SupportTickets.Core.Domain.ImageFormat.Detect(header[..read]) is null
+            ? new ValidationResult("The image must be a JPEG, PNG or WebP file.", [context.MemberName!])
+            : ValidationResult.Success;
+    }
+}
+
+/// <summary>
 /// One line of visible text: no line breaks or other control characters. A name is shown in emails and pages,
 /// where an embedded line break could forge extra lines of text.
 /// </summary>

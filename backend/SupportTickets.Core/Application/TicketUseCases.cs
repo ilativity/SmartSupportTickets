@@ -15,6 +15,7 @@ public sealed class TicketUseCases(
     INotificationSender notificationSender,
     NotificationComposer composer,
     IIdGenerator idGenerator,
+    IImageStore imageStore,
     TimeProvider timeProvider,
     ILogger<TicketUseCases> logger) : ITicketUseCases
 {
@@ -34,14 +35,28 @@ public sealed class TicketUseCases(
 
     public async Task<Ticket> CreateAsync(CreateTicketCommand command, CancellationToken ct)
     {
+        // The image is part of the customer's request: if it cannot be stored, the request fails (unlike AI/email).
+        var imageUrl = command.Image is { } image
+            ? await imageStore.SaveAsync(image.Content, image.Kind, ct)
+            : null;
+
         var summary = await TrySummarizeAsync(command.Description, ct);
 
         var ticket = Ticket.Create(
-            idGenerator.NewId(), command.Name, command.Email, command.Description, summary, imageUrl: null,
+            idGenerator.NewId(), command.Name, command.Email, command.Description, summary, imageUrl,
             timeProvider.GetUtcNow());
 
         // Saving is the one step allowed to fail the request: without it there is no ticket.
-        await repository.AddAsync(ticket, ct);
+        try
+        {
+            await repository.AddAsync(ticket, ct);
+        }
+        catch when (imageUrl is not null)
+        {
+            // No ticket points at the image any more; do not leave it on disk.
+            await imageStore.DeleteAsync(imageUrl, CancellationToken.None);
+            throw;
+        }
 
         await TrySendAsync(() => composer.TicketCreated(ticket), ticket.Id);
         return ticket;

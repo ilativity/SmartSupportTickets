@@ -18,6 +18,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public FakeNotificationSender Mail { get; } = new();
 
+    /// <summary>The temporary data folder this API instance uses.</summary>
+    public string DataPath => _data.Path;
+
     public string Environment { get; init; } = "Development";
 
     public Dictionary<string, string?> Settings { get; } = new();

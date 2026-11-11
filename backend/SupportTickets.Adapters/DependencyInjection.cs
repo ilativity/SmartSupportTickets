@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SupportTickets.Adapters.Ai;
+using SupportTickets.Adapters.Files;
 using SupportTickets.Adapters.Notifications;
 using SupportTickets.Adapters.Persistence;
 using SupportTickets.Core.Ports.Out;
@@ -24,6 +25,12 @@ public static class DependencyInjection
         services.AddSingleton<ITicketRepository>(sp => sp.GetRequiredService<JsonTicketRepository>());
 
         services.AddSingleton<IIdGenerator, GuidIdGenerator>();
+
+        // Uploaded images next to the data file, inside the same git-ignored folder (D11).
+        var dataDirectory = Path.GetFullPath(config["Storage:DataDirectory"] ?? "App_Data", contentRoot);
+        services.AddSingleton(new ImageStoreOptions(Path.Combine(dataDirectory, "uploads")));
+        services.AddSingleton<LocalImageStore>();
+        services.AddSingleton<IImageStore>(sp => sp.GetRequiredService<LocalImageStore>());
 
         // AI summary (D7). An unknown name stops the app at startup rather than silently running without AI.
         var ai = config.GetSection("Ai").Get<AiOptions>() ?? new AiOptions();

@@ -62,6 +62,9 @@ var loginLimit = config.GetValue("Auth:LoginRateLimit:PermitLimit", 5);
 // A second, shared ceiling on all login attempts together: the per-IP limit alone does not stop a guesser who rotates
 // through many addresses. Legitimate use (one admin) never comes near it.
 var loginGlobalLimit = config.GetValue("Auth:LoginRateLimit:GlobalPermitLimit", 30);
+// Anonymous ticket creation (each may carry a 5 MB image) per client IP per minute: a script must not be able to fill
+// the disk or the inbox. Generous for people, raised in the E2E environment.
+var createLimit = config.GetValue("Tickets:CreateRateLimit:PermitLimit", 10);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -71,7 +74,7 @@ builder.Services.AddRateLimiter(options =>
         await context.HttpContext.RequestServices.GetRequiredService<IProblemDetailsService>().WriteAsync(new()
         {
             HttpContext = context.HttpContext,
-            ProblemDetails = { Status = 429, Title = "Too many login attempts", Detail = "Try again in a minute." },
+            ProblemDetails = { Status = 429, Title = "Too many requests", Detail = "Too many attempts. Try again in a minute." },
         });
     };
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
@@ -79,6 +82,9 @@ builder.Services.AddRateLimiter(options =>
             ? RateLimitPartition.GetFixedWindowLimiter("all-logins",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = loginGlobalLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
             : RateLimitPartition.GetNoLimiter("other"));
+    options.AddPolicy(TicketEndpoints.CreateRateLimitPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = createLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.AddPolicy(AuthEndpoints.LoginRateLimitPolicy, http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = loginLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
@@ -122,6 +128,7 @@ if (app.Environment.IsDevelopment())
 app.MapHealthChecks("/health");
 app.MapTicketEndpoints();
 app.MapAuthEndpoints();
+app.MapUploadEndpoints();
 
 app.Run();
 
