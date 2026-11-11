@@ -289,6 +289,9 @@ dotnet run -- hash-password
   the per-IP limit on creating tickets.
 - **Emails after two very quick edits** may be delivered out of order; each one is correct on its own.
 - The sample tickets' image files are not part of the dataset; the UI shows a placeholder for them.
+- **One language (English).** Dates and times already follow each reader's locale and time zone, and the AI summary
+  is written in the ticket's language; translating the interface, API messages and emails (incl. right-to-left) is
+  planned step by step in [SPEC §10](docs/SPEC.md).
 - Not done on purpose: customer accounts, status workflow rules (any status may follow any other — the brief
   defines none), background queues for AI/email, frontend component unit tests (Playwright covers the UI).
 

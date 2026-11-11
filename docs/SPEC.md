@@ -290,7 +290,20 @@ A screenshot of visual work is checked before it is committed.
 Database, user registration / customer accounts, multiple admin users, token revocation, pagination (dataset is
 tiny; the whole file is filtered in memory — listed under Known limitations), background AI/email queues (D17),
 running more than one API replica (see §11), status workflow rules, frontend component unit tests (Playwright
-covers the UI), cloud deployment, i18n, real email delivery tracking.
+covers the UI), cloud deployment, real email delivery tracking.
+
+**One language (English) — a deliberate limitation, owner's decision 2026-11-11.** What adding languages would take,
+in order:
+1. *Frontend texts:* move the ~110 UI strings into one typed dictionary per language (`t('tickets.new')`, keys checked
+   by TypeScript), choose the language from the browser or a switcher, set `<html lang>`.
+2. *Right-to-left (Hebrew, Arabic):* `dir="rtl"` on `<html>` and logical CSS (`ms-`/`me-`, `start`/`end` instead of
+   `ml-`/`mr-`, `left`/`right`); dates and numbers are already formatted by `Intl` in the reader's locale (D21).
+3. *API messages:* validation and error texts from resource files via `IStringLocalizer`, chosen by
+   `Accept-Language`; the API keeps stable field keys, so the frontend could also translate by key instead.
+4. *Emails in the customer's language:* store the language on the ticket at creation (a domain + file-format change)
+   and give `NotificationComposer` one template set per language.
+5. *AI summary:* already asked for "in the same language as the ticket".
+Estimated (2026-11-11): 1–2 ≈ 40 min, 1–4 ≈ 1.5–2 h of implementation plus review.
 
 ---
 
