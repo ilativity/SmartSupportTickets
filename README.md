@@ -10,9 +10,13 @@ The assignment is in [docs/assignment/](docs/assignment/ASSIGNMENT.md), the plan
 [docs/SPEC.md](docs/SPEC.md), and how AI-assisted development was kept honest is
 [docs/AI-ASSISTED-DEVELOPMENT.md](docs/AI-ASSISTED-DEVELOPMENT.md).
 
-| Ticket list (desktop) | Admin view of a ticket | Phone |
+| Ticket list | Admin: inline editing, as in the mockup | Admin view of a ticket |
 |---|---|---|
-| ![List](docs/screenshots/list-desktop.png) | ![Details](docs/screenshots/details-admin.png) | ![Phone](docs/screenshots/list-mobile.png) |
+| ![List](docs/screenshots/list-desktop.png) | ![Inline editing](docs/screenshots/inline-edit-desktop.png) | ![Details](docs/screenshots/details-admin.png) |
+
+| Phone: list | Phone: new ticket | Phone: admin edits a card |
+|---|---|---|
+| ![Phone list](docs/screenshots/list-mobile.png) | ![Phone form](docs/screenshots/new-ticket-mobile.png) | ![Phone editing](docs/screenshots/inline-edit-mobile.png) |
 
 ---
 
@@ -52,11 +56,12 @@ see [Scaling](#scaling).
 ### Tests
 
 ```bash
-dotnet test                       # from the repository root: unit, adapter, API integration, architecture tests
+dotnet test                       # from the repository root: 211 unit, adapter, API integration, architecture tests
 
 cd frontend
 npx playwright install chromium   # once
-npm run test:e2e                  # starts its own API (5210) and frontend (5211) on fresh data
+npm run test:e2e                  # 26 Playwright specs (desktop + 375 px phone); starts its own API (5210) and
+                                  # frontend (5211) on fresh data
 ```
 
 ---
@@ -68,7 +73,7 @@ npm run test:e2e                  # starts its own API (5210) and frontend (5211
 | Ticket list with status filter and text search (name or description), newest first; filters live in the URL | `/tickets` |
 | New ticket form in a modal, optional image with preview; validation messages per field; AI summary generated while saving | "New ticket" |
 | Ticket page `/tickets/{id}` — the link the customer gets by email | details page |
-| Admin login (JWT); admins change status and resolution | `/login`, details page |
+| Admin login (JWT); admins change status and resolution — on the ticket page, or for many tickets at once right in the list (table rows / phone cards) with one Save | `/login`, list, details page |
 | Email on ticket created, on status change and on resolution change — one email per save | API console (or SMTP) |
 | Phone layout: cards instead of a table, full-screen form | < 768 px |
 
@@ -183,7 +188,7 @@ The numbers refer to [docs/SPEC.md §1](docs/SPEC.md).
 - **The URL is the source of truth for filters**, so a filtered list can be shared, survives reloads, and
   Back/Forward restore it.
 - **Mobile is a first-class layout,** not a shrunken table: cards under 768 px, a full-screen form, no sideways
-  scrolling at 375 px (checked in a browser at that width).
+  scrolling at 375 px (checked by the phone end-to-end tests).
 - **Double submits are blocked with a ref, not state** — a state update arrives on the next render, so two clicks
   in one frame would both pass a state check.
 - **Palette from the mockups** (blue management, coral customer actions), with the coral darkened so white text
