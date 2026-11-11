@@ -3,9 +3,9 @@
 # ONE API replica on purpose: tickets are stored in a JSON file guarded by an in-process lock, so two API
 # containers would overwrite each other's data. See README, "Scaling", for what scale-out would replace.
 #
-# Runs as a local demo by default (Development: the public demo admin password and signing key, interactive API
-# docs). For anything else copy .env.example to .env and set real secrets: with ASPNETCORE_ENVIRONMENT=Production
-# the API refuses to start without them.
+# Runs as a local demo by default (Development: the public demo admin password and signing key). For anything else
+# copy .env.example to .env and set real secrets: with ASPNETCORE_ENVIRONMENT=Production the API refuses to start
+# without them.
 
 services:
   api:

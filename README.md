@@ -22,7 +22,7 @@ The assignment is in [docs/assignment/](docs/assignment/ASSIGNMENT.md), the plan
 
 ## Run it
 
-Prerequisites: **.NET 9** (SDK 9 or newer with the 9.0 runtime) and **Node.js 20+**.
+Prerequisites: **.NET 9** (SDK 9 or newer with the 9.0 runtime) and **Node.js 20.19+ or 22.12+** (developed on 24).
 
 ```bash
 # 1. API on http://localhost:5200  (first start copies dataset.json into backend/SupportTickets.Api/App_Data/)
@@ -191,6 +191,11 @@ The numbers refer to [docs/SPEC.md §1](docs/SPEC.md).
   scrolling at 375 px (checked by the phone end-to-end tests).
 - **Double submits are blocked with a ref, not state** — a state update arrives on the next render, so two clicks
   in one frame would both pass a state check.
+- **Dates are UTC everywhere except on screen (D21).** The server only ever takes UTC time and stores it with `Z`;
+  each browser shows it in the reader's own time zone and locale — right for a team spread over time zones.
+- **Accessibility: WCAG 2.2 AA as the target (D22)** — labelled controls, errors tied to their fields and announced,
+  visible focus, AA contrast, native dialog focus handling, 44 px buttons; the e2e tests find controls by their
+  accessible names, so an unlabelled control fails them.
 - **Palette from the mockups** (blue management, coral customer actions), with the coral darkened so white text
   meets WCAG AA contrast.
 
@@ -236,6 +241,9 @@ repository.**
 | `Auth:LoginRateLimit:PermitLimit` | `5` | login attempts per IP per minute |
 | `Auth:LoginRateLimit:GlobalPermitLimit` | `30` | login attempts per minute, all clients together |
 | `Tickets:CreateRateLimit:PermitLimit` | `10` | new tickets per IP per minute (each may carry a 5 MB image) |
+| `ReverseProxy:TrustedNetwork` | — | CIDR of the reverse proxy (`172.28.0.0/16` in Docker); only from there is `X-Forwarded-For` trusted |
+| `Jwt:Issuer` / `Jwt:Audience` | `SmartSupportTickets` | |
+| `Ai:Gemini:BaseUrl` / `Ai:OpenAI:BaseUrl` | the providers' APIs | e.g. for a proxy |
 
 Turn on the AI summary (development):
 

@@ -17,12 +17,12 @@ The build follows this file. Every decision here is repeated with its reason in 
 | # | Decision | Reason |
 |---|----------|--------|
 | D1 | Backend targets **net9.0**, ASP.NET Core **Minimal API** | Assignment asks for .NET 8/9 and prefers Minimal API. .NET 9 left support 2026-11-10 → README names .NET 10 LTS as the next step. |
-| D2 | **Hexagonal architecture (ports & adapters)** in three projects: `Core` (domain + ports + use cases, no framework), `Adapters` (driven: JSON file, AI, email, files), `Api` (driving: HTTP + composition root) | The dependency rule is enforced by the **compiler** (Core has no reference to ASP.NET, MailKit or `HttpClient`), not by convention. Scaling or changing storage = new adapter, Core untouched (see §11). Deliberately light: ports are plain interfaces — no MediatR, domain events or Result types. |
+| D2 | **Hexagonal architecture (ports & adapters)** in three production projects — `Core` (domain + ports + use cases, no framework), `Adapters` (driven: JSON file, AI, email, files), `Api` (driving: HTTP + composition root) — plus `Tests` | The dependency rule is enforced by the **compiler** (Core has no reference to ASP.NET, MailKit or `HttpClient`), not by convention. Scaling or changing storage = new adapter, Core untouched (see §11). Deliberately light: ports are plain interfaces — no MediatR, domain events or Result types. |
 | D3 | Anyone may **list, view, create**; only **Admin (JWT)** may **edit** | Resolves the README conflict ("customers view and edit" vs bonus "only logged users can edit"). |
 | D4 | Public responses **never expose a full email**: the list omits it, details mask it (`j***@example.com`) unless the caller is Admin | The list is public and lists every ticket id, so "knowing the id" is not a secret. |
 | D5 | JSON file storage behind the `ITicketRepository` port: **in-memory cache + `SemaphoreSlim` + atomic write** (temp file → replace) | Concurrent requests must not corrupt the file. |
 | D6 | Runtime data lives in `App_Data/` (git-ignored), **seeded from the repo's `dataset.json`** on first run | Running the app never dirties the committed dataset; reset = delete `App_Data`. |
-| D7 | AI summary port with **Gemini** and **OpenAI** adapters + `None`, chosen by `Ai:Provider` | Both providers named in the assignment. No key → ticket still created, `summary = null`. |
+| D7 | AI summary port with **Gemini** and **OpenAI** adapters + `None`, chosen by `Ai:Provider` | Both providers named in the assignment. `None` (default) → tickets have `summary = null`; choosing a provider without its key stops startup (fail closed, like D13); a provider error at runtime → `summary = null` (D9). |
 | D8 | Notification port with **Console** (default) and **Smtp** (MailKit, Gmail App Password) adapters, chosen by `Email:Provider` | Mock is required, real SMTP is a bonus. Reviewer runs it with zero setup. |
 | D9 | **AI/email failures never fail the request** — logged, request succeeds | A ticket is the customer's data; a third-party outage must not lose it. |
 | D10 | Status + resolution changed in one save → **one** email listing both changes; no change → no email | Assignment lists 3 triggers; two emails for one click is noise. |
@@ -36,6 +36,8 @@ The build follows this file. Every decision here is repeated with its reason in 
 | D18 | `GET /api/tickets/statuses` serves the status list | The frontend never hard-codes `"In Progress"`; one source of truth. |
 | D19 | **Docker**: Dockerfiles for API and frontend + `docker-compose.yml` (1 API replica), `/health` endpoint | Reviewer runs everything with one command without installing .NET/Node. One replica because file storage is single-instance — stated honestly in README "Scaling". |
 | D20 | Time and ids come through ports (`TimeProvider`, `IIdGenerator`) | Use-case tests are deterministic. |
+| D21 | **All timestamps are UTC** end to end: taken from `TimeProvider.GetUtcNow()`, stored with `Z` (`2025-10-27T14:35:00Z`), sent by the API as ISO 8601 with offset; **only the browser converts to local time** (`Intl.DateTimeFormat`, the reader's own locale and time zone) | One instant means the same thing for a customer in Tel Aviv and an agent in New York; no server time zone, no daylight-saving ambiguity in stored data. |
+| D22 | **Accessibility target: WCAG 2.2 level AA.** Every control has a label (visible, or `aria-label` where the column header labels it); errors are linked to their field (`aria-describedby`, `aria-invalid`) and announced (`role="alert"`, live regions); visible focus ring on every interactive element; text contrast ≥ 4.5:1 (the mockup's coral was darkened for this); native `<dialog>` (focus moves in, Esc closes, focus returns); whole-row links stay real links (keyboard, middle-click); buttons ≥ 44 px tall (touch targets); layout works at 375 px without sideways scrolling (e2e-tested) | Support tools are used all day by many people; accessibility is cheaper built in than retrofitted. Checked by Playwright role/label queries, which fail when a control has no accessible name. Not done: an automated axe audit (listed as a next step). |
 
 ---
 
@@ -58,12 +60,12 @@ SmartSupportTickets/
 │  ├─ SupportTickets.Adapters/         # DRIVEN adapters — implement Ports/Out; named by technology
 │  │  ├─ Persistence/   JsonTicketRepository · JsonStorageOptions
 │  │  ├─ Ai/            GeminiSummaryGenerator · OpenAiSummaryGenerator · NoSummaryGenerator · AiOptions
-│  │  ├─ Notifications/ ConsoleNotificationSender · SmtpNotificationSender · EmailOptions
+│  │  ├─ Notifications/ ConsoleNotificationSender · SmtpNotificationSender (+ SmtpOptions)
 │  │  ├─ Files/         LocalImageStore (size + magic-byte check, GUID names)
 │  │  └─ DependencyInjection.cs   # AddAdapters(config): picks adapters by Ai:Provider / Email:Provider
 │  ├─ SupportTickets.Api/              # DRIVING adapter (HTTP) + composition root
-│  │  ├─ Program.cs     # wiring only: AddCore, AddAdapters, auth, CORS, rate limit, ProblemDetails, MapXxx()
-│  │  ├─ Endpoints/     TicketEndpoints · AuthEndpoints · HealthEndpoints
+│  │  ├─ Program.cs     # wiring only: Core services, AddAdapters, auth, CORS, rate limits, forwarded headers, ProblemDetails, MapXxx(), /health
+│  │  ├─ Endpoints/     TicketEndpoints · AuthEndpoints · UploadEndpoints
 │  │  ├─ Dtos/          HTTP contract: TicketListItemDto · TicketDetailsDto · CreateTicketRequest ·
 │  │  │                 UpdateTicketRequest · LoginRequest · LoginResponse  (+ mapping, email masking)
 │  │  ├─ Auth/          JwtOptions · AdminOptions · TokenService · AdminCredentialsVerifier
@@ -73,7 +75,8 @@ SmartSupportTickets/
 │  │  └─ appsettings.json · appsettings.Development.json · appsettings.E2E.json
 │  └─ SupportTickets.Tests/            # xUnit, no mocking library
 │     ├─ Fakes/         InMemoryTicketRepository · FakeSummaryGenerator (can throw) · FakeNotificationSender (outbox)
-│     │                 · FixedIdGenerator   (FakeTimeProvider from Microsoft.Extensions.TimeProvider.Testing)
+│     │                 · SequentialIdGenerator · FakeImageStore · FakeSmtpServer · StubHttpHandler
+│     │                 (FakeTimeProvider from Microsoft.Extensions.TimeProvider.Testing)
 │     ├─ Core/  · Adapters/  · Api/  · Architecture/
 └─ frontend/                           # Vite React TS
    ├─ Dockerfile · nginx.conf
@@ -82,8 +85,8 @@ SmartSupportTickets/
       ├─ api/        client.ts (fetch wrapper, auth header, ProblemDetails → ApiError, 429 ≠ "wrong password") · tickets.ts · auth.ts · types.ts
       ├─ auth/       AuthContext.tsx
       ├─ pages/      TicketsPage · TicketDetailsPage · LoginPage · NotFoundPage
-      ├─ components/ TicketTable · TicketCards · TicketFilters · NewTicketModal · StatusBadge · StatusSelect
-      │              · SaveBar · Header · Toast · ErrorState (Retry) · EmptyState
+      ├─ components/ TicketList (TicketTable · TicketCards, inline editing) · NewTicketModal · SaveBar · Toast
+      │              · ui (Button · Field · StatusBadge · TicketRef · ErrorState with Retry · EmptyState)
       └─ hooks/      useDebouncedValue · useInflightGuard (useRef-based double-submit guard)
 ```
 
@@ -220,7 +223,9 @@ briefly broken by hand to see its test fail.
 - *Adapters:* JSON repository — `dataset.json` load → save round-trip keeps every field, status spelling and date
   format; 20 parallel adds → valid file with all 20; 2 concurrent updates → both applied, each sees the correct
   `before`. Image store — accepts a real PNG; rejects a `.png` with text content and a file > 5 MB. AI adapters —
-  with a stub `HttpMessageHandler`: success parsed; 429/500 → null; 60-word answer → null.
+  with a stub `HttpMessageHandler`: success parsed; 429/500 → null; unfinished/refused/empty answer → null. (The
+  40-word rule is tested once in Core, `SummaryRules`, for all providers.) The 413 for an oversized body is enforced by
+  Kestrel/nginx and is not covered by the in-memory test host.
 - *Api* (`WebApplicationFactory`, temp `App_Data`): anon POST 201; anon PUT 401; admin PUT 200; filter + search;
   unknown id 404; list has no email; details email masked for anon and full for admin; invalid body 400 with field
   errors; login wrong password and unknown user → 401; non-Development environment without signing key → startup fails.

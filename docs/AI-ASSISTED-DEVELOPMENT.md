@@ -48,10 +48,10 @@ These are real examples from this project — each would have been easy to ship:
    read-modify-write runs inside the repository lock and returns the *before/after* pair from which emails are
    derived (D15).
 3. **`"In Progress"` contains a space.** The default enum converter cannot read the provided dataset. →
-   Explicit member name, and a test that loads and re-saves `dataset.json` unchanged.
+   One display-name mapping in Core (`TicketStatusNames`), and a test that loads and re-saves `dataset.json` unchanged.
 4. **Login rate limit vs the test suite.** Several end-to-end tests log in from one IP; a strict limit would make
-   them fail randomly. → The limit is configurable and raised only in the `E2E` environment; a separate test checks
-   that "too many attempts" is not shown as "wrong password".
+   them fail randomly. → The limit is configurable and raised only in the `E2E` environment; an end-to-end spec
+   checks that "too many attempts" is not shown as "wrong password".
 5. **Form uploads and anti-forgery.** ASP.NET Core requires anti-forgery tokens for form binding by default. The
    API uses bearer tokens, not cookies, so CSRF does not apply — disabling it is a reasoned decision, commented in
    code, not a workaround.
