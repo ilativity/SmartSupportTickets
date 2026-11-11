@@ -1,12 +1,16 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { getStatuses, listTickets } from '../api/tickets'
+import { ApiError } from '../api/client'
+import { getStatuses, listTickets, updateTicket } from '../api/tickets'
+import { useAuth } from '../auth/AuthContext'
 import { NewTicketModal } from '../components/NewTicketModal'
-import { TicketCards, TicketTable } from '../components/TicketList'
+import { SaveBar } from '../components/SaveBar'
+import { TicketCards, TicketTable, isChanged, type InlineEditing, type RowEdit } from '../components/TicketList'
 import { useToast } from '../components/Toast'
 import { Button, EmptyState, ErrorState, Spinner, inputClass } from '../components/ui'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { useInflightGuard } from '../hooks/useInflightGuard'
 
 export function TicketsPage() {
   // Filters live in the URL (?status=…&search=…): a filtered list can be bookmarked, shared and survives a reload.
@@ -21,6 +25,21 @@ export function TicketsPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const toast = useToast()
+  const { admin } = useAuth()
+
+  // Inline editing (admin only, decision D16). Only the fields the admin touched are kept, exactly as typed; whether
+  // a row counts as changed is computed against the latest server values on every render, never stored.
+  const [edits, setEdits] = useState<Record<string, RowEdit>>({})
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({})
+  const saving = useInflightGuard()
+
+  // Logging out drops unsaved edits: they could no longer be saved anyway.
+  useEffect(() => {
+    if (!admin) {
+      setEdits({})
+      setEditErrors({})
+    }
+  }, [admin])
 
   // URL changed by navigation (Back/Forward, a link): show that value in the box.
   useEffect(() => {
@@ -52,6 +71,62 @@ export function TicketsPage() {
     queryFn: ({ signal }) => listTickets({ status, search: urlSearch }, signal),
     placeholderData: keepPreviousData, // keep showing the old list while the new filter loads
   })
+
+  function changeRow(id: string, field: keyof RowEdit, value: string) {
+    setEdits((current) => ({ ...current, [id]: { ...current[id], [field]: value } }))
+    setEditErrors(({ [id]: _cleared, ...rest }) => rest)
+  }
+
+  const visible = tickets.data ?? []
+  const changed = visible.filter((t) => isChanged(t, edits[t.id]))
+  // Edits in rows the current filter hides are kept (they reappear with the rows) but are never saved unseen.
+  const hiddenEdits = Object.keys(edits).filter((id) => !visible.some((t) => t.id === id)).length
+
+  /** One PUT per changed, visible ticket. Successes are cleared; failures stay marked with their reason. */
+  async function saveAll() {
+    await saving.run(async () => {
+      const batch = changed.map((ticket) => {
+        const sent = edits[ticket.id]
+        // Untouched fields come from the row as it is now, so an edit to one field never resets the other.
+        const body = { status: sent.status ?? ticket.status, resolution: (sent.resolution ?? ticket.resolution).trim() }
+        return { id: ticket.id, sent, body }
+      })
+      const results = await Promise.allSettled(batch.map((b) => updateTicket(b.id, b.body)))
+
+      const failed: Record<string, string> = {}
+      results.forEach((result, i) => {
+        if (result.status === 'rejected') {
+          const error = result.reason
+          failed[batch[i].id] = error instanceof ApiError ? (Object.values(error.fieldErrors)[0]?.[0] ?? error.message) : 'Could not save.'
+        }
+      })
+
+      // Fresh rows first, then clear the edits: otherwise the old values flash back for a moment.
+      await queryClient.invalidateQueries({ queryKey: ['tickets'] })
+      void queryClient.invalidateQueries({ queryKey: ['ticket'] })
+      setEdits((current) => {
+        const next = { ...current }
+        batch.forEach((b, i) => {
+          // Only if nothing was typed in that row while the save was running (same object = untouched since sent).
+          if (results[i].status === 'fulfilled' && next[b.id] === b.sent) delete next[b.id]
+        })
+        return next
+      })
+      setEditErrors(failed)
+
+      const failures = Object.keys(failed).length
+      const saved = batch.length - failures
+      if (failures === 0) {
+        toast(`Saved ${saved} ${saved === 1 ? 'ticket' : 'tickets'}. Customers were notified by email.`)
+      } else {
+        toast(`Saved ${saved}, ${failures} could not be saved — see the marked rows.`, { tone: 'error' })
+      }
+    })
+  }
+
+  const editing: InlineEditing | undefined = admin
+    ? { statuses: statuses.data ?? [], edits, errors: editErrors, busy: saving.busy, onChange: changeRow }
+    : undefined
 
   function setStatus(value: string) {
     setParams((current) => {
@@ -114,10 +189,23 @@ export function TicketsPage() {
           <p className="mb-2 text-sm text-slate-600" aria-live="polite">
             {tickets.data.length} {tickets.data.length === 1 ? 'ticket' : 'tickets'}
           </p>
-          <TicketTable tickets={tickets.data} />
-          <TicketCards tickets={tickets.data} />
+          <TicketTable tickets={tickets.data} editing={editing} />
+          <TicketCards tickets={tickets.data} editing={editing} />
         </div>
       )}
+
+      {/* Room for the fixed Save bar, so it never covers the last row. */}
+      {(changed.length > 0 || hiddenEdits > 0) && <div className="h-20" aria-hidden="true" />}
+      <SaveBar
+        count={changed.length}
+        hidden={hiddenEdits}
+        busy={saving.busy}
+        onSave={saveAll}
+        onDiscard={() => {
+          setEdits({})
+          setEditErrors({})
+        }}
+      />
 
       <NewTicketModal
         open={creating}
