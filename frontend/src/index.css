@@ -28,6 +28,31 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 
+/*
+ * Every <select>: our own chevron, inset from the right edge (the native arrow sits against the frame and cannot be
+ * moved), with room reserved so long option text never runs under it.
+ */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2364748b'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-position: right 0.85rem center;
+  background-repeat: no-repeat;
+  background-size: 1.1rem;
+  padding-right: 2.75rem !important;
+  cursor: pointer;
+}
+
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* The search box has its own clear button (TicketsPage); hide the browser's built-in one. */
+input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* Native <dialog> backdrop (New ticket modal). */
 dialog::backdrop {
   background: rgb(15 23 42 / 0.5);

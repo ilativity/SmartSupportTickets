@@ -32,7 +32,7 @@ test('anonymous create: validation errors, then success lands on the new ticket'
 
   // And it is in the list.
   await page.getByRole('link', { name: '← All tickets' }).click()
-  await page.getByLabel('Search').fill(name)
+  await page.getByLabel('Search', { exact: true }).fill(name)
   await expect(page.getByRole('link', { name, exact: true })).toBeVisible()
 })
 

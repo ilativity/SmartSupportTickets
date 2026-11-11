@@ -44,6 +44,23 @@ test('admin edits status and resolution on the detail page; it survives a reload
   await expect(page.locator('main')).not.toContainText('e2e.customer@example.com')
 })
 
+test('Discard changes on the ticket page restores the saved values', async ({ page, request }) => {
+  const ticket = await createTicket(request, uniqueName('Discard'))
+  await logIn(page)
+  await page.goto(`/tickets/${ticket.id}`)
+  const discard = page.getByRole('button', { name: 'Discard changes', exact: true })
+  await expect(discard).toBeDisabled()
+
+  await page.getByLabel('Status').selectOption('Closed')
+  await page.getByLabel('Resolution').fill('Something I did not mean to write')
+  await discard.click()
+
+  await expect(page.getByLabel('Status')).toHaveValue('New')
+  await expect(page.getByLabel('Resolution')).toHaveValue('')
+  await expect(discard).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+})
+
 test('an admin session survives a reload', async ({ page }) => {
   await logIn(page)
   await page.reload()

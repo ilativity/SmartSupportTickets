@@ -83,11 +83,28 @@ test('edits in rows hidden by the filter are not saved unseen', async ({ page, r
   await adminListFor(page, prefix)
   await field(page, 'Status', ticket.name).selectOption('Closed')
 
-  await page.getByLabel('Search').fill('zz-nothing-matches')
+  await page.getByLabel('Search', { exact: true }).fill('zz-nothing-matches')
   await expect(bar(page)).toContainText('1 more hidden by the filter')
   await expect(bar(page).getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled()
 
-  await page.getByLabel('Search').fill(prefix)
+  await page.getByLabel('Search', { exact: true }).fill(prefix)
+  await expect(bar(page)).toContainText('1 unsaved change')
+})
+
+test('Undo on one row discards only that row', async ({ page, request }) => {
+  const prefix = uniqueName('Undo')
+  const keep = await createTicket(request, `${prefix} keep`)
+  const drop = await createTicket(request, `${prefix} drop`)
+  await adminListFor(page, prefix)
+
+  await field(page, 'Status', keep.name).selectOption('Closed')
+  await field(page, 'Status', drop.name).selectOption('Closed')
+  await expect(bar(page)).toContainText('2 unsaved changes')
+
+  await page.locator('table').getByRole('button', { name: `Undo for ${drop.name}'s ticket`, exact: true }).click()
+
+  await expect(field(page, 'Status', drop.name)).toHaveValue('New')
+  await expect(field(page, 'Status', keep.name)).toHaveValue('Closed')
   await expect(bar(page)).toContainText('1 unsaved change')
 })
 

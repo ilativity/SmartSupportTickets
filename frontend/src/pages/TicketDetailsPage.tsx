@@ -189,6 +189,18 @@ function EditTicketForm({ ticket }: { ticket: TicketDetails }) {
       {error && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       <div className="mt-4 flex items-center justify-end gap-3">
         {dirty && <span className="text-sm text-slate-500">Unsaved changes</span>}
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!dirty || busy}
+          onClick={() => {
+            setStatus(ticket.status)
+            setResolution(ticket.resolution)
+            setError(null)
+          }}
+        >
+          Discard changes
+        </Button>
         <Button type="submit" busy={busy} disabled={!dirty}>
           Save
         </Button>

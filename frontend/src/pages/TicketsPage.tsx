@@ -125,7 +125,17 @@ export function TicketsPage() {
   }
 
   const editing: InlineEditing | undefined = admin
-    ? { statuses: statuses.data ?? [], edits, errors: editErrors, busy: saving.busy, onChange: changeRow }
+    ? {
+        statuses: statuses.data ?? [],
+        edits,
+        errors: editErrors,
+        busy: saving.busy,
+        onChange: changeRow,
+        onDiscard: (id) => {
+          setEdits(({ [id]: _dropped, ...rest }) => rest)
+          setEditErrors(({ [id]: _cleared, ...rest }) => rest)
+        },
+      }
     : undefined
 
   function setStatus(value: string) {
@@ -159,17 +169,32 @@ export function TicketsPage() {
             ))}
           </select>
         </div>
-        <div>
+        <div className="relative">
           <label htmlFor="search" className="sr-only">Search</label>
           <input
             id="search"
             type="search"
-            className={inputClass}
+            className={`${inputClass} pr-11`}
             placeholder="Search by name or description…"
             value={searchInput}
             maxLength={100}
             onChange={(e) => setSearchInput(e.target.value)}
           />
+          {searchInput && (
+            // Our own clear button (the browser's built-in one is hidden in index.css): it can show a pointer and a
+            // circle on hover, and it returns focus to the box so typing can continue.
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                setSearchInput('')
+                document.getElementById('search')?.focus()
+              }}
+              className="absolute inset-y-0 right-2 my-auto flex size-7 cursor-pointer items-center justify-center rounded-full text-slate-500 ring-slate-400 transition hover:bg-slate-100 hover:text-slate-800 hover:ring-1"
+            >
+              <span aria-hidden="true" className="text-lg leading-none">×</span>
+            </button>
+          )}
         </div>
       </div>
 

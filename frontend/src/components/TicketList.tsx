@@ -19,6 +19,21 @@ export interface InlineEditing {
   errors: Record<string, string>
   busy: boolean
   onChange: (id: string, field: keyof RowEdit, value: string) => void
+  /** Drops the unsaved edit of one ticket; the others stay. */
+  onDiscard: (id: string) => void
+}
+
+function DiscardRow({ ticket, editing, label }: { ticket: TicketListItem; editing: InlineEditing; label: string }) {
+  return (
+    <button
+      type="button"
+      disabled={editing.busy}
+      onClick={() => editing.onDiscard(ticket.id)}
+      className="relative z-10 cursor-pointer rounded px-1.5 py-0.5 text-xs font-semibold text-brand-700 underline underline-offset-2 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {label}<span className="sr-only"> for {ticket.name}'s ticket</span>
+    </button>
+  )
 }
 
 /** True if the edit differs from what the server has now. Computed, never stored, so it cannot go stale. */
@@ -110,7 +125,12 @@ export function TicketTable({ tickets, editing }: { tickets: TicketListItem[]; e
                     {t.name}
                   </Link>
                   <div><TicketRef id={t.id} /></div>
-                  {dirty && <span className="text-xs font-medium text-amber-800">Unsaved</span>}
+                  {dirty && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-medium text-amber-800">Unsaved</span>
+                      <DiscardRow ticket={t} editing={editing!} label="Undo" />
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-slate-700">{t.summary ?? <span className="text-slate-400">—</span>}</td>
                 <td className="px-4 py-3 text-slate-600">
@@ -186,7 +206,12 @@ export function TicketCards({ tickets, editing }: { tickets: TicketListItem[]; e
               <label htmlFor={`card-resolution-${t.id}`} className={labelClass}>Resolution</label>
               <ResolutionInput ticket={t} editing={editing} id={`card-resolution-${t.id}`} labelled />
               <RowError ticket={t} editing={editing} />
-              {dirty && <p className="text-xs font-medium text-amber-800">Unsaved</p>}
+              {dirty && (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-amber-800">Unsaved</p>
+                  <DiscardRow ticket={t} editing={editing} label="Discard changes" />
+                </div>
+              )}
             </div>
           </li>
         )

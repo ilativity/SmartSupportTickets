@@ -60,7 +60,7 @@ dotnet test                       # from the repository root: 211 unit, adapter,
 
 cd frontend
 npx playwright install chromium   # once
-npm run test:e2e                  # 26 Playwright specs (desktop + 375 px phone); starts its own API (5210) and
+npm run test:e2e                  # 29 Playwright specs (desktop + 375 px phone); starts its own API (5210) and
                                   # frontend (5211) on fresh data
 ```
 
