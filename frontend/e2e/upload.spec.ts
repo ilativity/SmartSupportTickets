@@ -52,7 +52,7 @@ test('the client refuses an image over 5 MB before uploading it', async ({ page 
   await expect(dialog.getByAltText('Selected image preview')).toHaveCount(0)
 })
 
-test('an admin adds an image to a ticket whose image is missing; a working image cannot be replaced', async ({ page, request }) => {
+async function adminOnNewTicket(page: import('@playwright/test').Page, request: import('@playwright/test').APIRequestContext) {
   const created = await request.post('/api/tickets', {
     multipart: { name: uniqueName('Add image'), email: 'later@example.com', description: 'The photo will be added by support later.' },
   })
@@ -63,24 +63,95 @@ test('an admin adds an image to a ticket whose image is missing; a working image
   await page.getByRole('button', { name: 'Log in', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Log out', exact: true })).toBeVisible()
   await page.goto(`/tickets/${ticket.id}`)
+  return ticket
+}
 
-  // An unsaved edit typed before the upload must survive it.
-  await page.getByLabel('Resolution').fill('Typed before the upload')
-  await page.getByLabel('Add an image').setInputFiles({ name: 'later.png', mimeType: 'image/png', buffer: PNG_1X1 })
-  await page.getByRole('button', { name: 'Upload image', exact: true }).click()
+test('an admin adds an image as part of the edit: one Save stores image, status and resolution', async ({ page, request }) => {
+  await adminOnNewTicket(page, request)
+  const save = page.getByRole('button', { name: 'Save', exact: true })
+  await expect(save).toBeDisabled()
 
+  // Choosing an image alone is an unsaved change.
+  await page.getByLabel('Image', { exact: true }).setInputFiles({ name: 'later.png', mimeType: 'image/png', buffer: PNG_1X1 })
+  await expect(page.getByAltText('Selected image preview')).toBeVisible()
+  await expect(page.getByText('Unsaved changes')).toBeVisible()
+  await expect(save).toBeEnabled()
+
+  await page.getByLabel('Status').selectOption('Resolved')
+  await page.getByLabel('Resolution').fill('Photo received, part replaced.')
+  await save.click()
+
+  await expect(page.getByRole('status').filter({ hasText: 'Saved. The customer was notified' })).toBeVisible()
   const image = page.getByAltText('Attached by the customer')
   await expect(image).toBeVisible()
   expect(await image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1)
-  await expect(page.getByLabel('Add an image')).toHaveCount(0) // a working image is not offered for replacement
-  await expect(page.getByLabel('Resolution')).toHaveValue('Typed before the upload')
+  await expect(page.getByLabel('Image', { exact: true })).toHaveCount(0) // a working image is not offered for replacement
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
 
   await page.reload()
   await expect(page.getByAltText('Attached by the customer')).toBeVisible()
+  await expect(page.getByLabel('Status')).toHaveValue('Resolved')
+})
+
+test('Discard changes drops a chosen image together with the other edits', async ({ page, request }) => {
+  await adminOnNewTicket(page, request)
+
+  await page.getByLabel('Resolution').fill('Not meant to be saved')
+  await page.getByLabel('Image', { exact: true }).setInputFiles({ name: 'later.png', mimeType: 'image/png', buffer: PNG_1X1 })
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+
+  await expect(page.getByAltText('Selected image preview')).toHaveCount(0)
+  await expect(page.getByLabel('Resolution')).toHaveValue('')
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.reload()
+  await expect(page.getByAltText('Attached by the customer')).toHaveCount(0) // nothing was uploaded
+})
+
+test('saving only an image sends no email', async ({ page, request }) => {
+  await adminOnNewTicket(page, request)
+
+  await page.getByLabel('Image', { exact: true }).setInputFiles({ name: 'later.png', mimeType: 'image/png', buffer: PNG_1X1 })
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  await expect(page.getByRole('status').filter({ hasText: /^Saved\.$/ })).toBeVisible()
+  await expect(page.getByAltText('Attached by the customer')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
 })
 
 test('visitors are not offered to add an image', async ({ page }) => {
   await page.goto('/tickets/b2a1f7c0-2a93-4d8f-a23e-9b1a24dcf5a1') // sample ticket with a missing image file
   await expect(page.getByText('Image not available')).toBeVisible()
-  await expect(page.getByLabel('Add an image')).toHaveCount(0)
+  await expect(page.getByLabel('Image', { exact: true })).toHaveCount(0)
+})
+
+test('if another admin added an image first, the other edits can still be saved', async ({ page, request }) => {
+  const ticket = await adminOnNewTicket(page, request)
+  // Stub: the server answers the image upload with 409, as when someone else was faster.
+  await page.route(`**/api/tickets/${ticket.id}/image`, (route) =>
+    route.fulfill({ status: 409, contentType: 'application/problem+json', body: JSON.stringify({ status: 409, detail: 'This ticket already has an image.' }) }),
+  )
+  await page.getByLabel('Status').selectOption('Closed')
+  await page.getByLabel('Image', { exact: true }).setInputFiles({ name: 'late.png', mimeType: 'image/png', buffer: PNG_1X1 })
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  await expect(page.getByRole('alert')).toContainText('Another admin has just added an image')
+  await expect(page.getByLabel('Status')).toHaveValue('Closed') // the edit is kept
+  await page.getByRole('button', { name: 'Save', exact: true }).click() // and can now be saved
+  await expect(page.getByRole('status').filter({ hasText: 'Saved. The customer was notified' })).toBeVisible()
+})
+
+test('if the status cannot be saved after the image was, the message says so', async ({ page, request }) => {
+  const ticket = await adminOnNewTicket(page, request)
+  await page.route(`**/api/tickets/${ticket.id}`, (route) =>
+    route.request().method() === 'PUT'
+      ? route.fulfill({ status: 500, contentType: 'application/problem+json', body: JSON.stringify({ status: 500 }) })
+      : route.fallback(),
+  )
+  await page.getByLabel('Status').selectOption('Closed')
+  await page.getByLabel('Image', { exact: true }).setInputFiles({ name: 'ok.png', mimeType: 'image/png', buffer: PNG_1X1 })
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  await expect(page.getByRole('alert')).toContainText('The image was added, but status and resolution were not saved')
+  await expect(page.getByAltText('Attached by the customer')).toBeVisible()
+  await expect(page.getByLabel('Status')).toHaveValue('Closed')
 })
