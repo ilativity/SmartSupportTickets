@@ -74,7 +74,7 @@ backend/
     Ports/In/                ITicketUseCases — what the outside world can ask for
     Ports/Out/               ITicketRepository, ISummaryGenerator, INotificationSender, IIdGenerator
     Application/             TicketUseCases, NotificationComposer (email texts), SummaryRules
-  SupportTickets.Adapters/   driven adapters: JSON file repository, Gemini, OpenAI, console email; DI wiring by config
+  SupportTickets.Adapters/   driven adapters: JSON file repository, Gemini, OpenAI, console + SMTP email; DI wiring by config
   SupportTickets.Api/        driving adapter (HTTP endpoints, DTOs, validation, JWT) + composition root
   SupportTickets.Tests/      xUnit; fakes for every port; WebApplicationFactory integration tests
 frontend/                    React app; only src/api/ knows about HTTP
@@ -197,7 +197,12 @@ repository.**
 | `Ai:OpenAI:ApiKey` | — | **secret**; required when the provider is OpenAI |
 | `Ai:OpenAI:Model` | `gpt-6-luna` | any model of the Responses API |
 | `Ai:OpenAI:ReasoningEffort` | `none` | empty = not sent |
-| `Email:Provider` | `Console` | `Console` (log the email) |
+| `Email:Provider` | `Console` | `Console` (write the email to the log) or `Smtp` (send it) |
+| `Email:Smtp:Host` / `Port` | `smtp.gmail.com` / `587` | |
+| `Email:Smtp:Security` | `StartTls` | `StartTls`, `SslOnConnect` (465) or `None` (local test servers only) |
+| `Email:Smtp:Username` / `Password` | — | **secret** password; empty username = no authentication |
+| `Email:Smtp:FromAddress` / `FromName` | — / `Smart Support` | sender shown to the customer |
+| `Email:Smtp:TimeoutSeconds` | `20` | limit for one whole email (connect to goodbye) |
 | `Jwt:SigningKey` | dev default in Development/E2E only | **secret**, ≥ 32 characters |
 | `Jwt:LifetimeMinutes` | `60` | 1–1440 |
 | `Auth:Admin:Username` | `admin` | |
@@ -217,6 +222,19 @@ dotnet user-secrets set "Ai:Gemini:ApiKey" "<your key from https://aistudio.goog
 
 Both providers are called over plain REST and get the same instruction; the default models were the cheapest fast
 ones in each provider's model list when this was written (2026-11) — change `Model` when they are retired.
+
+Send real email with Gmail (needs 2-step verification and an
+[App Password](https://myaccount.google.com/apppasswords) — the normal password does not work over SMTP):
+
+```bash
+dotnet user-secrets set "Email:Provider" "Smtp"
+dotnet user-secrets set "Email:Smtp:Username" "you@gmail.com"
+dotnet user-secrets set "Email:Smtp:Password" "<16-character app password>"
+dotnet user-secrets set "Email:Smtp:FromAddress" "you@gmail.com"
+```
+
+A mail server that is down or slow never fails or blocks the request: each email has its own time limit and a
+failure is logged.
 
 Create an admin password hash (the password is read from standard input, so it stays out of shell history):
 

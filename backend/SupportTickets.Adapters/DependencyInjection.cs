@@ -53,8 +53,12 @@ public static class DependencyInjection
             case "console":
                 services.AddSingleton<INotificationSender, ConsoleNotificationSender>();
                 break;
+            case "smtp":
+                services.AddSingleton(ValidateSmtp(config.GetSection("Email:Smtp").Get<SmtpOptions>() ?? new SmtpOptions()));
+                services.AddSingleton<INotificationSender, SmtpNotificationSender>();
+                break;
             default:
-                throw new InvalidOperationException($"Unknown Email:Provider '{emailProvider}'. Use Console.");
+                throw new InvalidOperationException($"Unknown Email:Provider '{emailProvider}'. Use Console or Smtp.");
         }
 
         return services;
@@ -68,6 +72,39 @@ public static class DependencyInjection
         string.IsNullOrWhiteSpace(key)
             ? throw new InvalidOperationException($"{setting} is required when that AI provider is selected.")
             : key.Trim();
+
+    /// <summary>A half-configured mail server is a startup error, not a failure on every ticket.</summary>
+    private static SmtpOptions ValidateSmtp(SmtpOptions smtp)
+    {
+        _ = SmtpNotificationSender.SecurityOption(smtp.Security); // throws on an unknown value
+        if (string.IsNullOrWhiteSpace(smtp.Host) || string.IsNullOrWhiteSpace(smtp.FromAddress))
+        {
+            throw new InvalidOperationException("Email:Smtp:Host and Email:Smtp:FromAddress are required when Email:Provider is Smtp.");
+        }
+
+        if (!MimeKit.MailboxAddress.TryParse(smtp.FromAddress, out _))
+        {
+            throw new InvalidOperationException($"Email:Smtp:FromAddress '{smtp.FromAddress}' is not a valid email address.");
+        }
+
+        if (smtp.Port is < 1 or > 65535 || smtp.TimeoutSeconds < 1)
+        {
+            throw new InvalidOperationException("Email:Smtp:Port must be 1-65535 and Email:Smtp:TimeoutSeconds at least 1.");
+        }
+
+        if (!string.IsNullOrEmpty(smtp.Username) && string.IsNullOrWhiteSpace(smtp.Password))
+        {
+            throw new InvalidOperationException("Email:Smtp:Password is required when Email:Smtp:Username is set.");
+        }
+
+        // A password over an unencrypted connection could be read by anyone on the network path.
+        if (!string.IsNullOrEmpty(smtp.Username) && smtp.Security.Equals("None", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Email:Smtp:Security=None cannot be combined with a username and password.");
+        }
+
+        return smtp;
+    }
 
     private static void ConfigureAiClient(HttpClient http, string baseUrl)
     {
