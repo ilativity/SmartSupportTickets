@@ -134,7 +134,7 @@ test('if another admin added an image first, the other edits can still be saved'
   await page.getByLabel('Image', { exact: true }).setInputFiles({ name: 'late.png', mimeType: 'image/png', buffer: PNG_1X1 })
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
-  await expect(page.getByRole('alert')).toContainText('Another admin has just added an image')
+  await expect(page.getByRole('alert')).toContainText('This ticket already has an image, so yours was not added')
   await expect(page.getByLabel('Status')).toHaveValue('Closed') // the edit is kept
   await page.getByRole('button', { name: 'Save', exact: true }).click() // and can now be saved
   await expect(page.getByRole('status').filter({ hasText: 'Saved. The customer was notified' })).toBeVisible()
@@ -154,4 +154,27 @@ test('if the status cannot be saved after the image was, the message says so', a
   await expect(page.getByRole('alert')).toContainText('The image was added, but status and resolution were not saved')
   await expect(page.getByAltText('Attached by the customer')).toBeVisible()
   await expect(page.getByLabel('Status')).toHaveValue('Closed')
+})
+
+test('an image the server has but the browser cannot draw is not offered for replacement', async ({ page, request }) => {
+  // Regression (2026-11-12): only a PNG signature — accepted by the server's byte check, undrawable by a browser.
+  // The page used to treat the failed drawing as "no image", offered an upload, and the server answered 409.
+  const created = await request.post('/api/tickets', {
+    multipart: {
+      name: uniqueName('Damaged image'),
+      email: 'damaged@example.com',
+      description: 'The attached photo file is damaged.',
+      image: { name: 'damaged.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52]) },
+    },
+  })
+  const ticket = (await created.json()) as { id: string }
+  await page.goto('/login')
+  await page.getByLabel('Username').fill('admin')
+  await page.getByLabel('Password').fill('Admin123!')
+  await page.getByRole('button', { name: 'Log in', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Log out', exact: true })).toBeVisible()
+  await page.goto(`/tickets/${ticket.id}`)
+
+  await expect(page.getByText('Image not available')).toBeVisible()
+  await expect(page.getByLabel('Image', { exact: true })).toHaveCount(0)
 })

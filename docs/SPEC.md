@@ -134,7 +134,8 @@ no workflow; noted as an extension.
 | GET | `/openapi/v1.json` (+ Scalar UI in Development) | — | | | |
 
 DTOs (Api project): `TicketListItemDto` — id, name, description, summary, status, resolution, hasImage,
-createdAt, updatedAt, **no email** (D4). `TicketDetailsDto` — all fields; `email` masked for non-admin.
+createdAt, updatedAt, **no email** (D4). `TicketDetailsDto` — all fields; `email` masked for non-admin; `imageAvailable` = the image file really exists (server's
+answer; the UI decides "may an admin add an image" from it, never from a browser failing to draw the file).
 
 Implementation notes:
 - Endpoints grouped with `MapGroup`, `TypedResults`, thin: bind → DTO → command → use case → DTO.

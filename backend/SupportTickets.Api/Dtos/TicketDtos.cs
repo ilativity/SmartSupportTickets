@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using SupportTickets.Api.Validation;
 using SupportTickets.Core.Domain;
+using SupportTickets.Core.Ports.Out;
 
 namespace SupportTickets.Api.Dtos;
 
@@ -30,7 +31,10 @@ public sealed record TicketDetailsDto(
     string Status,
     string Resolution,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    // The server's answer to "does this ticket have an image file?" — the one the UI must use. A browser failing to
+    // draw a file is not the same thing, and deciding from that made the UI offer an upload the server then refused.
+    bool ImageAvailable);
 
 /// <summary>The "New ticket" form (multipart/form-data, so an image can be attached).</summary>
 public sealed class CreateTicketRequest
@@ -78,11 +82,12 @@ public static class TicketMapping
         t.Id, t.Name, t.Description, t.Summary, t.Status.ToName(), t.Resolution, t.ImageUrl is not null,
         t.CreatedAt, t.UpdatedAt);
 
-    public static TicketDetailsDto ToDetails(this Ticket t, bool showEmail) => new(
+    public static TicketDetailsDto ToDetails(this Ticket t, bool showEmail, IImageStore images) => new(
         t.Id, t.Name, showEmail ? t.Email : MaskEmail(t.Email), t.Description, t.Summary,
         // Stored relative ("uploads/x.png"); served from the site root, so the browser gets "/uploads/x.png".
         t.ImageUrl is null ? null : "/" + t.ImageUrl.TrimStart('/'),
-        t.Status.ToName(), t.Resolution, t.CreatedAt, t.UpdatedAt);
+        t.Status.ToName(), t.Resolution, t.CreatedAt, t.UpdatedAt,
+        t.ImageUrl is { } url && images.Exists(url));
 
     /// <summary>
     /// "john.doe@example.com" → "j***@example.com": enough for the customer to recognise their own ticket, not enough

@@ -24,6 +24,8 @@ export interface TicketDetails {
   description: string
   summary: string | null
   imageUrl: string | null
+  /** The server's answer: does the image file exist? Decides whether an admin may add one. */
+  imageAvailable: boolean
   status: TicketStatus
   resolution: string
   createdAt: string

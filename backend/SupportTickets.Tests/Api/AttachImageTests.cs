@@ -64,6 +64,19 @@ public sealed class AttachImageApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Details_say_whether_the_image_file_really_exists()
+    {
+        // The sample ticket names a file that is not on disk.
+        var before = JsonNode.Parse(await _client.GetStringAsync($"/api/tickets/{SeedId}"))!;
+        Assert.NotNull((string?)before["imageUrl"]);
+        Assert.False((bool)before["imageAvailable"]!);
+
+        var attached = JsonNode.Parse(await (await AttachAsync(TestImages.Png)).Content.ReadAsStringAsync())!;
+        Assert.True((bool)attached["imageAvailable"]!);
+        Assert.True((bool)JsonNode.Parse(await _client.GetStringAsync($"/api/tickets/{SeedId}"))!["imageAvailable"]!);
+    }
+
+    [Fact]
     public async Task A_second_image_is_refused_with_409()
     {
         Assert.Equal(HttpStatusCode.OK, (await AttachAsync(TestImages.Png)).StatusCode);

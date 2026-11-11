@@ -4,6 +4,7 @@ using SupportTickets.Api.Dtos;
 using SupportTickets.Api.Validation;
 using SupportTickets.Core.Domain;
 using SupportTickets.Core.Ports.In;
+using SupportTickets.Core.Ports.Out;
 
 namespace SupportTickets.Api.Endpoints;
 
@@ -82,16 +83,16 @@ public static class TicketEndpoints
     }
 
     private static async Task<Results<Ok<TicketDetailsDto>, NotFound>> GetAsync(
-        Guid id, HttpContext http, ITicketUseCases useCases, CancellationToken ct)
+        Guid id, HttpContext http, ITicketUseCases useCases, IImageStore images, CancellationToken ct)
     {
         var ticket = await useCases.GetAsync(id, ct);
         return ticket is null
             ? TypedResults.NotFound()
-            : TypedResults.Ok(ticket.ToDetails(showEmail: IsAdmin(http)));
+            : TypedResults.Ok(ticket.ToDetails(showEmail: IsAdmin(http), images));
     }
 
     private static async Task<Created<TicketDetailsDto>> CreateAsync(
-        [FromForm] CreateTicketRequest request, ITicketUseCases useCases, CancellationToken ct)
+        [FromForm] CreateTicketRequest request, ITicketUseCases useCases, IImageStore images, CancellationToken ct)
     {
         // The validation filter has already rejected nulls and non-images, so the "!" here are safe.
         var ticket = await useCases.CreateAsync(
@@ -99,7 +100,7 @@ public static class TicketEndpoints
 
         // The person who just created the ticket typed the address themselves, but the response still follows D4:
         // the same JSON is what any client would see when fetching this ticket.
-        return TypedResults.Created($"/api/tickets/{ticket.Id}", ticket.ToDetails(showEmail: false));
+        return TypedResults.Created($"/api/tickets/{ticket.Id}", ticket.ToDetails(showEmail: false, images));
     }
 
     private static async Task<ImageUpload?> ReadImageAsync(IFormFile? file, CancellationToken ct)
@@ -117,12 +118,12 @@ public static class TicketEndpoints
     }
 
     private static async Task<Results<Ok<TicketDetailsDto>, NotFound, ProblemHttpResult>> AttachImageAsync(
-        Guid id, [FromForm] AttachImageRequest request, ITicketUseCases useCases, CancellationToken ct)
+        Guid id, [FromForm] AttachImageRequest request, ITicketUseCases useCases, IImageStore images, CancellationToken ct)
     {
         var result = await useCases.AttachImageAsync(id, (await ReadImageAsync(request.Image, ct))!, ct);
         return result.Outcome switch
         {
-            AttachImageOutcome.Attached => TypedResults.Ok(result.Ticket!.ToDetails(showEmail: true)),
+            AttachImageOutcome.Attached => TypedResults.Ok(result.Ticket!.ToDetails(showEmail: true, images)),
             AttachImageOutcome.NotFound => TypedResults.NotFound(),
             // Replacing what the customer sent is not offered: the image is part of their request.
             _ => TypedResults.Problem("This ticket already has an image.", statusCode: StatusCodes.Status409Conflict),
@@ -130,7 +131,7 @@ public static class TicketEndpoints
     }
 
     private static async Task<Results<Ok<TicketDetailsDto>, NotFound, ValidationProblem>> UpdateAsync(
-        Guid id, UpdateTicketRequest request, ITicketUseCases useCases, CancellationToken ct)
+        Guid id, UpdateTicketRequest request, ITicketUseCases useCases, IImageStore images, CancellationToken ct)
     {
         if (!TicketStatusNames.TryParse(request.Status, out var status))
         {
@@ -143,7 +144,7 @@ public static class TicketEndpoints
         var ticket = await useCases.UpdateAsync(new UpdateTicketCommand(id, status, request.Resolution), ct);
         return ticket is null
             ? TypedResults.NotFound()
-            : TypedResults.Ok(ticket.ToDetails(showEmail: true)); // only admins reach this endpoint
+            : TypedResults.Ok(ticket.ToDetails(showEmail: true, images)); // only admins reach this endpoint
     }
 
     // An anonymous request, or one with an invalid/expired token, is simply not an admin: it still gets the ticket,

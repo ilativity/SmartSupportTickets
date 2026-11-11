@@ -21,8 +21,8 @@ export function TicketDetailsPage() {
     queryKey: ['ticket', id, !!admin],
     queryFn: ({ signal }) => getTicket(id, signal),
   })
-  // Which image URL failed to load (the sample data points at files that do not exist). Remembering the URL, not a
-  // flag, means a newly added image starts out as "not failed" by itself.
+  // An image the server has but the browser could not draw (e.g. a damaged file): shown as a placeholder. This is
+  // display only — whether an image may be ADDED is the server's `imageAvailable`, never this.
   const [failedImage, setFailedImage] = useState<string | null>(null)
 
   if (ticket.isPending) {
@@ -39,7 +39,7 @@ export function TicketDetailsPage() {
   }
 
   const t = ticket.data
-  const imageBroken = !!t.imageUrl && failedImage === t.imageUrl
+  const showPlaceholder = !t.imageAvailable || failedImage === t.imageUrl
   return (
     <div className="mx-auto max-w-3xl">
       <Link to="/tickets" className="text-sm font-medium text-brand-700 hover:underline">← All tickets</Link>
@@ -67,7 +67,7 @@ export function TicketDetailsPage() {
           <p className="mt-1 whitespace-pre-wrap break-words text-slate-800">{t.description}</p>
         </section>
 
-        <TicketImage url={t.imageUrl} failed={imageBroken} onFailed={() => setFailedImage(t.imageUrl)} />
+        <TicketImage url={t.imageUrl} failed={showPlaceholder} onFailed={() => setFailedImage(t.imageUrl)} />
 
         {!admin && (
           <section className="mt-5">
@@ -91,7 +91,7 @@ export function TicketDetailsPage() {
       {admin ? (
         // Keyed by the saved status and resolution: the form restarts from the server's values when those change, but
         // not when only an image was added — that must not throw away an edit the admin has not saved yet.
-        <EditTicketForm key={`${t.status}|${t.resolution}`} ticket={t} canAddImage={!t.imageUrl || imageBroken} />
+        <EditTicketForm key={`${t.status}|${t.resolution}`} ticket={t} canAddImage={!t.imageAvailable} />
       ) : (
         <p className="mt-4 text-sm text-slate-600">
           Support staff?{' '}
@@ -218,9 +218,10 @@ function EditTicketForm({ ticket, canAddImage }: { ticket: TicketDetails; canAdd
           imageSaved = true
         } catch (e) {
           if (e instanceof ApiError && e.status === 409) {
-            // Another admin added an image meanwhile: show theirs, drop ours, keep the other edits for another Save.
+            // The server already has an image for this ticket (e.g. another admin was faster): drop ours, reload the
+            // ticket to show theirs, keep the other edits for another Save.
             setImage(null)
-            setError('Another admin has just added an image, shown above. Nothing else was saved yet — press Save again.')
+            setError('This ticket already has an image, so yours was not added. Nothing else was saved yet — press Save again.')
             void queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] })
           } else {
             setImageError(e instanceof ApiError ? (e.fieldErrors.image?.[0] ?? e.message) : 'Could not add the image.')
