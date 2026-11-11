@@ -81,7 +81,8 @@ Filled in as the work progresses: what the independent reviews found and what ha
 
 | Commit | Review findings | Outcome |
 |---|---|---|
-| | | |
+| Core (domain, ports, use cases) — guard-breaking pass | 6 guards broken by hand. 5 tests failed as they should; **one did not**: removing the "client aborted → stop" rule still passed, because the next step (saving) also honours cancellation. The rule's own effect — not logging a client abort as an AI outage — was untested. | Test added that checks the log; the mutation now fails it. |
+| Core — independent review | (1) the 10 s AI budget relied on the adapter honouring its cancellation token — a misbehaving adapter could hang ticket creation; (2) length limits checked before trimming, so `"  a "` passes a 2-character minimum; (3) composing an email ran outside the try/catch, so a template bug would turn a saved ticket into a 500; plus nits: link escaping, apostrophes trimmed from summaries, an emoji could be cut in half. | (1) hard timeout (`WaitAsync`) + test with an adapter that ignores cancellation; (3), link, apostrophe, emoji fixed with tests; each new guard broken by hand to see its test fail. (2) is HTTP validation → fixed and tested in the API commit. Emails after two very quick edits may arrive out of order (each one correct) — accepted, noted in README. |
 
 ---
 

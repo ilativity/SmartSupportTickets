@@ -49,12 +49,12 @@ SmartSupportTickets/
 ├─ README.md                           # run + design decisions + scaling + known limitations + screenshots
 ├─ docs/  SPEC.md · AI-ASSISTED-DEVELOPMENT.md (how AI errors were guarded against) · assignment/
 ├─ backend/
-│  ├─ SupportTickets.Core/             # THE HEXAGON — references nothing but the BCL
-│  │  ├─ Domain/        Ticket · TicketStatus · TicketChange (what changed between before/after)
-│  │  ├─ Ports/In/      ITicketUseCases (List, Get, Create, Update, Statuses) + commands/results
+│  ├─ SupportTickets.Core/             # THE HEXAGON — BCL + Microsoft.Extensions.Logging.Abstractions (an interface, to log D9 failures)
+│  │  ├─ Domain/        Ticket · TicketStatus + TicketStatusNames · TicketChange · TicketRules (field limits)
+│  │  ├─ Ports/In/      ITicketUseCases (List, Get, Create, Update) + commands/query; statuses come from TicketStatusNames
 │  │  │                 (CreateTicketCommand, UpdateTicketCommand, TicketQuery)
-│  │  ├─ Ports/Out/     ITicketRepository · ISummaryGenerator · INotificationSender · IImageStore · IIdGenerator
-│  │  └─ Application/   TicketUseCases (implements Ports/In using Ports/Out) · NotificationComposer (email texts)
+│  │  ├─ Ports/Out/     ITicketRepository · ISummaryGenerator · INotificationSender · IIdGenerator · IImageStore (added with uploads, commit 13)
+│  │  └─ Application/   TicketUseCases (implements Ports/In using Ports/Out) · NotificationComposer (email texts) · SummaryRules
 │  ├─ SupportTickets.Adapters/         # DRIVEN adapters — implement Ports/Out; named by technology
 │  │  ├─ Persistence/   JsonTicketRepository · JsonStorageOptions
 │  │  ├─ Ai/            GeminiSummaryGenerator · OpenAiSummaryGenerator · NoSummaryGenerator · AiOptions
@@ -104,12 +104,13 @@ Fakes live in the test project, not in Core, so no test code ships in the produc
 | description | `string` | 10–2000 chars |
 | summary | `string?` | AI output, ≤ 200 chars, null if unavailable |
 | imageUrl | `string?` | `uploads/{guid}.{ext}`; seed values point to files that don't exist → UI shows a placeholder |
-| status | `TicketStatus` | `New`, `In Progress`, `Resolved`, `Closed` — serialized by the JSON adapter with `[JsonStringEnumMemberName("In Progress")]` (.NET 9); Core only knows the enum + its display names |
+| status | `TicketStatus` | `New`, `In Progress`, `Resolved`, `Closed` — display names live once in Core (`TicketStatusNames`); the JSON adapter and the API both use them, so no serializer attribute is needed in Core. Parsing accepts display names only (not `InProgress`, not numbers) |
 | resolution | `string` | ≤ 2000, `""` when empty (as in dataset) |
 | createdAt / updatedAt | `DateTimeOffset` | UTC from `TimeProvider` |
 
-`Ticket.Apply(status, resolution)` returns a `TicketChange` (status changed? resolution changed?) — the domain,
-not the endpoint, decides what counts as a change. No status-transition rules (any → any): the assignment defines
+`Ticket` is an **immutable record**. `Ticket.Apply(status, resolution, now)` returns the **same instance** when
+nothing changes (whitespace-only edits included), else a new one with `updatedAt = now`; `TicketChange.Between(before,
+after)` says what changed — the domain, not the endpoint, decides what counts as a change. No status-transition rules (any → any): the assignment defines
 no workflow; noted as an extension.
 
 ---
@@ -134,6 +135,7 @@ createdAt, updatedAt, **no email** (D4). `TicketDetailsDto` — all fields; `ema
 Implementation notes:
 - Endpoints grouped with `MapGroup`, `TypedResults`, thin: bind → DTO → command → use case → DTO.
 - Validation: DataAnnotations on request records, run by `ValidationFilter<T>` → `TypedResults.ValidationProblem`.
+  Length limits apply to the **trimmed** value (Core trims): `"  a "` must fail the 2-character minimum.
 - `POST` uses `[FromForm]` → `.DisableAntiforgery()`: bearer tokens, no cookies, so CSRF does not apply (commented in code).
 - Image: jpg/png/webp, ≤ 5 MB, type decided by **magic bytes**; the adapter writes a new file under a GUID name
   from the validated bytes only — the client's file name and content-type are never kept.
@@ -154,7 +156,8 @@ in-memory cache untouched.
 
 **AI prompt:** fixed system instruction ("summarize the support issue in one sentence, max 15 words, same
 language as the input, output only the summary"); the customer text goes in a separate, delimited user message
-and is treated as data; output trimmed; an answer > 40 words is discarded (→ null), otherwise capped at 200 chars.
+and is treated as data. The answer is checked in Core (`SummaryRules`, same for every provider): whitespace and
+wrapping quotes removed; > 40 words → discarded (null); otherwise capped at 200 chars.
 Models configurable (`Ai:Gemini:Model`, `Ai:OpenAI:Model`), defaults = the cheapest fast model of each provider.
 Typed `HttpClient`s, plain REST — no SDK, so every line is explainable.
 
@@ -162,8 +165,7 @@ Typed `HttpClient`s, plain REST — no SDK, so every line is explainable.
 MailKit, `smtp.gmail.com:587` StartTLS, credentials from user-secrets.
 
 **Persistence:** singleton `JsonTicketRepository`: lazy load once, all reads/writes under `SemaphoreSlim(1,1)`,
-write = serialize to `tickets.json.tmp` → `File.Move(overwrite: true)`. Returns copies so callers can't mutate
-the cache.
+write = serialize to `tickets.json.tmp` → `File.Move(overwrite: true)`. Tickets are immutable records, so the cache can hand them out without copying.
 
 **Auth (Api):** `Auth:Admin:Username` + `Auth:Admin:PasswordHash` (ASP.NET `PasswordHasher` format). Login always
 runs hash verification, even for an unknown username (against a fixed dummy hash), so timing does not reveal

@@ -365,6 +365,9 @@ FodyWeavers.xsd
 # Runtime data: the API copies dataset.json here on first start and writes tickets/uploads here.
 # Anchored on purpose: an unanchored "App_Data/" would also hide any future folder of that name.
 /backend/SupportTickets.Api/App_Data/
+# The Visual Studio template above ignores every folder named "out/" (build output). Ports/Out is source code:
+# the hexagon's driven ports. Without this line it silently never reaches the repository.
+!/backend/SupportTickets.Core/Ports/Out/
 # Local secrets (JWT key, admin hash, AI keys, SMTP password) never enter the repo.
 .env
 .env.*

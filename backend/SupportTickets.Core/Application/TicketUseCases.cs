@@ -1,0 +1,127 @@
+using Microsoft.Extensions.Logging;
+using SupportTickets.Core.Domain;
+using SupportTickets.Core.Ports.In;
+using SupportTickets.Core.Ports.Out;
+
+namespace SupportTickets.Core.Application;
+
+/// <summary>
+/// The application's use cases. Implements the driving port using only driven ports, so it can be tested with
+/// in-memory fakes and does not know about HTTP, JSON files, Gemini or SMTP.
+/// </summary>
+public sealed class TicketUseCases(
+    ITicketRepository repository,
+    ISummaryGenerator summaryGenerator,
+    INotificationSender notificationSender,
+    NotificationComposer composer,
+    IIdGenerator idGenerator,
+    TimeProvider timeProvider,
+    ILogger<TicketUseCases> logger) : ITicketUseCases
+{
+    /// <summary>
+    /// How long ticket creation waits for the AI summary (D17). The brief asks for the summary while saving, so the
+    /// call is synchronous; the budget bounds how long a slow provider can keep the customer waiting.
+    /// </summary>
+    public static readonly TimeSpan SummaryBudget = TimeSpan.FromSeconds(10);
+
+    public async Task<IReadOnlyList<Ticket>> ListAsync(TicketQuery query, CancellationToken ct)
+    {
+        var tickets = await repository.ListAsync(query, ct);
+        return tickets.OrderByDescending(t => t.CreatedAt).ToList();
+    }
+
+    public Task<Ticket?> GetAsync(Guid id, CancellationToken ct) => repository.GetAsync(id, ct);
+
+    public async Task<Ticket> CreateAsync(CreateTicketCommand command, CancellationToken ct)
+    {
+        var summary = await TrySummarizeAsync(command.Description, ct);
+
+        var ticket = Ticket.Create(
+            idGenerator.NewId(), command.Name, command.Email, command.Description, summary, imageUrl: null,
+            timeProvider.GetUtcNow());
+
+        // Saving is the one step allowed to fail the request: without it there is no ticket.
+        await repository.AddAsync(ticket, ct);
+
+        await TrySendAsync(() => composer.TicketCreated(ticket), ticket.Id);
+        return ticket;
+    }
+
+    public async Task<Ticket?> UpdateAsync(UpdateTicketCommand command, CancellationToken ct)
+    {
+        // The edit runs inside the repository's lock (D15); the clock is read there too, so updatedAt belongs
+        // to the moment the change was really applied.
+        var update = await repository.UpdateAsync(
+            command.Id,
+            ticket => ticket.Apply(command.Status, command.Resolution, timeProvider.GetUtcNow()),
+            ct);
+
+        if (update is null)
+        {
+            return null;
+        }
+
+        // Composed from the before/after pair the repository returned, never from a separate read — that read could
+        // already include someone else's later edit.
+        await TrySendAsync(() => composer.TicketUpdated(update.Before, update.After), update.After.Id);
+
+        return update.After;
+    }
+
+    /// <summary>Asks the AI provider for a summary; any failure or timeout becomes "no summary" (D9).</summary>
+    private async Task<string?> TrySummarizeAsync(string description, CancellationToken requestAborted)
+    {
+        using var budget = new CancellationTokenSource(SummaryBudget, timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(requestAborted, budget.Token);
+        try
+        {
+            // WaitAsync enforces the budget even against an adapter that ignores its cancellation token:
+            // the token alone is only a polite request to stop.
+            var raw = await summaryGenerator.SummarizeAsync(description, linked.Token)
+                .WaitAsync(SummaryBudget, timeProvider, requestAborted);
+            return SummaryRules.Normalize(raw);
+        }
+        catch (OperationCanceledException) when (requestAborted.IsCancellationRequested)
+        {
+            // The client went away: stop the whole request instead of creating a ticket nobody is waiting for.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (ex is TimeoutException || budget.IsCancellationRequested)
+            {
+                logger.LogWarning("AI summary timed out after {Budget}; ticket saved without a summary", SummaryBudget);
+            }
+            else
+            {
+                logger.LogWarning(ex, "AI summary failed; ticket saved without a summary");
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Composes and sends an email; any failure is logged and swallowed — the ticket is already saved (D9).
+    /// Composing is inside the try as well: a bug in an email template must not turn a saved ticket into a 500.
+    /// A null notification means there is nothing to tell the customer.
+    /// </summary>
+    private async Task TrySendAsync(Func<Notification?> compose, Guid ticketId)
+    {
+        try
+        {
+            if (compose() is not { } notification)
+            {
+                return;
+            }
+
+            // Not tied to the request's token: once the ticket is saved, the customer should get the email even if
+            // the browser tab was closed a moment later.
+            await notificationSender.SendAsync(notification, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Notification for ticket {TicketId} could not be sent", ticketId);
+        }
+    }
+}
