@@ -11,10 +11,10 @@ test('lists tickets, filters by status and searches, all reflected in the URL', 
 
   await page.getByLabel('Status').selectOption('In Progress')
   await expect(page).toHaveURL(/status=In\+Progress|status=In%20Progress/)
+  // Retrying assertions: the old list stays on screen until the filtered one arrives (no flicker), so a one-off
+  // read right after the URL changes could still see the previous rows. That race made this spec flaky.
   await expect(rows.first()).toBeVisible()
-  for (const status of await rows.locator('td:nth-child(4)').allInnerTexts()) {
-    expect(status.trim()).toBe('In Progress')
-  }
+  await expect(rows.locator('td:nth-child(4)').filter({ hasNotText: 'In Progress' })).toHaveCount(0)
 
   await page.getByLabel('Status').selectOption('')
   await page.getByLabel('Search', { exact: true }).fill('laptop')
