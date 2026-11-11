@@ -312,6 +312,10 @@ dotnet run -- hash-password
 - **One admin account**, no token revocation (tokens expire after an hour).
 - **Attached images are public** like the ticket page itself (anyone with the link); there is no disk quota beyond
   the per-IP limit on creating tickets.
+- **Emails are sent inside the request.** A mail failure never fails it (the ticket is already saved; the error is
+  logged), and one email can take at most `Email:Smtp:TimeoutSeconds` (20 s) — but a slow mail server delays the
+  response by up to that, and a failed email is not retried. Next step: an outbox (store "email to send" with the
+  ticket, a background worker sends and retries) — see [Scaling](#scaling).
 - **Emails after two very quick edits** may be delivered out of order; each one is correct on its own.
 - The sample tickets' image files are not part of the dataset; the UI shows a placeholder for them.
 - **One language (English).** Dates and times already follow each reader's locale and time zone, and the AI summary
