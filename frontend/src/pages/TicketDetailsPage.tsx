@@ -300,7 +300,7 @@ function EditTicketForm({ ticket, canAddImage }: { ticket: TicketDetails; canAdd
           Discard changes
         </Button>
         <Button type="submit" busy={busy} disabled={!dirty}>
-          Save
+          Save changes
         </Button>
       </div>
     </form>

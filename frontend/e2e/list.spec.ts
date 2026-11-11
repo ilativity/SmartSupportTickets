@@ -64,3 +64,27 @@ test('Back restores the previous search in the box and the list', async ({ page 
   await expect(page.getByRole('link', { name: 'John Doe', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Emily Johnson', exact: true })).toHaveCount(0)
 })
+
+test('the table shows the full description; a long one expands in place without opening the ticket', async ({ page, request }) => {
+  const ending = 'and this is the very end of a long description.'
+  const description = `${'The printer prints faint lines on every page after the cartridge change. '.repeat(4)}${ending}`
+  const created = await request.post('/api/tickets', {
+    multipart: { name: `Long ${Date.now().toString(36)}`, email: 'long@example.com', description },
+  })
+  const { name } = (await created.json()) as { name: string }
+  await page.goto(`/tickets?search=${encodeURIComponent(name)}`)
+  const row = page.locator('tbody tr').filter({ hasText: name })
+  const more = row.getByRole('button', { name: 'Show more', exact: true })
+
+  // Geometry, not text presence: a clamped paragraph still CONTAINS the whole text, it just does not show it.
+  const text = row.getByText(ending)
+  const clipped = () => text.evaluate((p) => p.scrollHeight > p.clientHeight + 1)
+  await expect(more).toHaveAttribute('aria-expanded', 'false')
+  expect(await clipped()).toBe(true)
+
+  await more.click()
+
+  await expect(page).toHaveURL(/\/tickets\?/) // still on the list
+  await expect.poll(clipped).toBe(false)
+  await expect(row.getByRole('button', { name: 'Show less', exact: true })).toHaveAttribute('aria-expanded', 'true')
+})

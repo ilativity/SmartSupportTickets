@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
 import type { TicketListItem } from '../api/types'
 import { formatDate } from '../lib/format'
@@ -33,6 +34,31 @@ function DiscardRow({ ticket, editing, label }: { ticket: TicketListItem; editin
     >
       {label}<span className="sr-only"> for {ticket.name}'s ticket</span>
     </button>
+  )
+}
+
+/**
+ * The full description, as the assignment asks for the table. Short texts are shown whole; long ones start
+ * collapsed with "Show more", so one long ticket does not push the rest of the list off the screen.
+ */
+const COLLAPSE_AFTER = 160
+
+function ExpandableText({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  if (text.length <= COLLAPSE_AFTER) return <p className="whitespace-pre-wrap">{text}</p>
+  return (
+    <div>
+      <p className={`whitespace-pre-wrap ${expanded ? '' : 'line-clamp-3'}`}>{text}</p>
+      {/* Above the row's stretched link (z-10), so it toggles the text instead of opening the ticket. */}
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+        className="relative z-10 mt-1 rounded text-xs font-semibold text-brand-700 underline underline-offset-2 hover:bg-brand-50"
+      >
+        {expanded ? 'Show less' : 'Show more'}
+      </button>
+    </div>
   )
 }
 
@@ -134,7 +160,7 @@ export function TicketTable({ tickets, editing }: { tickets: TicketListItem[]; e
                 </td>
                 <td className="px-4 py-3 text-slate-700">{t.summary ?? <span className="text-slate-400">—</span>}</td>
                 <td className="px-4 py-3 text-slate-600">
-                  <p className="line-clamp-2" title={t.description}>{t.description}</p>
+                  <ExpandableText text={t.description} />
                 </td>
                 <td className="px-4 py-3">
                   {editing ? <StatusSelect ticket={t} editing={editing} id={`status-${t.id}`} /> : <StatusBadge status={t.status} />}
@@ -172,7 +198,9 @@ export function TicketCards({ tickets, editing }: { tickets: TicketListItem[]; e
               </div>
               {!editing && <StatusBadge status={t.status} />}
             </div>
-            <p className="mt-2 line-clamp-3 break-words text-sm text-slate-700">{t.summary ?? t.description}</p>
+            {t.summary && <p className="mt-2 break-words text-sm font-medium text-slate-800">{t.summary}</p>}
+            {/* The card opens the ticket, where the description is shown in full. */}
+            <p className="mt-1 line-clamp-3 break-words text-sm text-slate-600">{t.description}</p>
             {!editing && t.resolution && (
               <p className="mt-2 line-clamp-2 break-words text-sm text-slate-500">Resolution: {t.resolution}</p>
             )}

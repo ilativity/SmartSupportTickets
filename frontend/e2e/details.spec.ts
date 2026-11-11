@@ -25,7 +25,7 @@ test('admin edits status and resolution on the detail page; it survives a reload
   // Back on the same ticket, now as admin: full email and the edit form.
   await expect(page).toHaveURL(new RegExp(`/tickets/${ticket.id}$`))
   await expect(page.getByText('e2e.customer@example.com')).toBeVisible()
-  const save = page.getByRole('button', { name: 'Save', exact: true })
+  const save = page.getByRole('button', { name: 'Save changes', exact: true })
   await expect(save).toBeDisabled() // nothing changed yet
 
   await page.getByLabel('Status').selectOption('Resolved')
@@ -58,7 +58,7 @@ test('Discard changes on the ticket page restores the saved values', async ({ pa
   await expect(page.getByLabel('Status')).toHaveValue('New')
   await expect(page.getByLabel('Resolution')).toHaveValue('')
   await expect(discard).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled()
 })
 
 test('an admin session survives a reload', async ({ page }) => {

@@ -56,11 +56,11 @@ see [Scaling](#scaling).
 ### Tests
 
 ```bash
-dotnet test                       # from the repository root: 211 unit, adapter, API integration, architecture tests
+dotnet test                       # from the repository root: 225 unit, adapter, API integration, architecture tests
 
 cd frontend
 npx playwright install chromium   # once
-npm run test:e2e                  # 29 Playwright specs (desktop + 375 px phone); starts its own API (5210) and
+npm run test:e2e                  # 38 Playwright specs (desktop + 375 px phone); starts its own API (5210) and
                                   # frontend (5211) on fresh data
 ```
 
@@ -77,6 +77,29 @@ npm run test:e2e                  # 29 Playwright specs (desktop + 375 px phone)
 | Admin login (JWT); admins change status and resolution — on the ticket page, or for many tickets at once right in the list (table rows / phone cards) with one Save | `/login`, list, details page |
 | Email on ticket created, on status change and on resolution change — one email per save | API console (or SMTP) |
 | Phone layout: cards instead of a table, full-screen form | < 768 px |
+
+### Assignment checklist
+
+Every requirement of [the assignment](docs/assignment/ASSIGNMENT.md) and where it lives.
+
+| Requirement | Where |
+|---|---|
+| React frontend; ASP.NET Core **Minimal API** backend (.NET 9) | `frontend/`, `backend/SupportTickets.Api/Program.cs` |
+| JSON file storage, read/written **only on the server**; the frontend talks only to the API | `Adapters/Persistence/JsonTicketRepository.cs` (seeded from `dataset.json`); `frontend/src/api/` |
+| **Entities** | `Core/Domain/Ticket.cs` (+ `TicketStatus`, `TicketChange`) |
+| **DTOs** | `Api/Dtos/TicketDtos.cs` (list item, details, create/update requests) |
+| **Service classes** | `Core/Application/TicketUseCases.cs` (the ticket service), `NotificationComposer.cs` (email texts); adapters for storage, AI, email, images |
+| Tickets **table**, filter by **status** (dropdown) and **text search** (name or description) | `pages/TicketsPage.tsx`, `components/TicketList.tsx` |
+| **Full description** and **AI summary** in the table; current **status**; click a row → single ticket | `TicketList.tsx` (long descriptions expand in place) |
+| **New Ticket** button → modal with Full Name, Email, Issue Description (+ optional image) | `components/NewTicketModal.tsx` |
+| On submit: saved to the JSON file, **email with a tracking link** | `TicketUseCases.CreateAsync`, `NotificationComposer.TicketCreated` |
+| Detail view at **`/tickets/{id}`**: unique id, customer details, description, AI summary, status (dropdown), resolution, **Save changes** | `pages/TicketDetailsPage.tsx` |
+| Emails on **create**, **status change**, **resolution change** (one per save) | `TicketUseCases`; console mock by default, Gmail/any SMTP via MailKit |
+| Bonus: **admin login**, **JWT**, role-based editing (all users can add tickets) | `Api/Auth/`, `Endpoints/AuthEndpoints.cs`, `pages/LoginPage.tsx` |
+| Bonus: **AI summary** (Gemini or OpenAI) while saving | `Adapters/Ai/` |
+| Bonus: **real email** (Gmail SMTP / MailKit) | `Adapters/Notifications/SmtpNotificationSender.cs` |
+| Bonus: **UI/UX** — clean, responsive, accessible | phone layout, WCAG 2.2 AA target (D22) |
+| Own screenshots | [above](#smart-support-tickets) and `docs/screenshots/` |
 
 ---
 
